@@ -27,6 +27,43 @@ from kalshi_api import get_client, get_market_settlement, get_fills, get_market_
 from data_engine import parse_fill_blocks, save_cache, FILLS_FILE, CACHE_FILE
 
 
+def _classify_sport_from_leg(leg_str):
+    """Classify sport from a leg description."""
+    upper = leg_str.upper()
+    # NBA team names / player indicators
+    nba_teams = ["LAKERS", "CELTICS", "WARRIORS", "NETS", "KNICKS", "BUCKS", "76ERS",
+                 "HEAT", "SUNS", "MAVERICKS", "NUGGETS", "CLIPPERS", "THUNDER", "CAVALIERS",
+                 "TIMBERWOLVES", "GRIZZLIES", "PELICANS", "HAWKS", "BULLS", "PACERS",
+                 "MAGIC", "RAPTORS", "ROCKETS", "SPURS", "KINGS", "BLAZERS", "PISTONS",
+                 "HORNETS", "WIZARDS", "JAZZ"]
+    ncaab_indicators = ["MARCH MADNESS", "NCAAB", "NCAAMB", "TOURNAMENT"]
+
+    # Check ticker suffix if present
+    if "KXNBA" in upper or "KXMVENBA" in upper:
+        return "nba"
+    if "KXNCAAMB" in upper or "KXNCAAB" in upper or "KXMVENCAAMB" in upper:
+        return "ncaab"
+    if "KXNHL" in upper or "KXMVENHL" in upper:
+        return "nhl"
+    if any(t in upper for t in ("KXEPL", "KXLALIGA", "KXSERIEA", "KXBUNDESLIGA", "KXLIGUE1", "KXUCL", "KXSOCCER")):
+        return "soccer"
+
+    # Bet type keywords for sport detection
+    if any(k in upper for k in ("PTS", "REB", "AST", "3PM", "BLK", "STL", "POINTS SCORED", "POINTS")):
+        # Could be NBA or NCAAB — check for college indicators
+        if any(k in upper for k in ncaab_indicators):
+            return "ncaab"
+        return "nba"
+    if "WINS BY OVER" in upper and "POINTS" in upper:
+        return "nba"
+    if any(k in upper for k in ("GOALS", "BTTS", "BOTH TEAMS TO SCORE", "CLEAN SHEET")):
+        return "soccer"
+    if any(k in upper for k in ("SAVES", "SHOTS ON GOAL")):
+        return "nhl"
+
+    return "other"
+
+
 def _classify_sport_from_ticker(ticker):
     """Classify sport from a Kalshi SGP ticker."""
     upper = (ticker or "").upper()
@@ -42,14 +79,23 @@ def _classify_sport_from_ticker(ticker):
 
 
 def _parse_legs_from_title(title):
-    """Try to extract leg descriptions from a Kalshi market title."""
+    """Parse leg descriptions from a Kalshi market title.
+    SGP titles use comma-separated legs like:
+    'yes Team A,no Team B wins by over 6.5 Points,yes Over 159.5 points scored'
+    """
     if not title:
         return []
-    # SGP market titles often have legs separated by " AND " or " & "
-    # e.g. "LeBron James 25+ Pts AND Lakers ML AND Over 220.5"
+
+    # Try comma-separated first (most SGP markets)
+    parts = [p.strip() for p in title.split(",") if p.strip()]
+    if len(parts) > 1:
+        return parts
+
+    # Try AND-separated
     parts = re.split(r'\s+AND\s+|\s+&\s+', title, flags=re.IGNORECASE)
     if len(parts) > 1:
         return [p.strip() for p in parts if p.strip()]
+
     return [title.strip()]
 
 
@@ -131,22 +177,21 @@ def fetch_fills_from_api(client, days):
         info = market_info.get(ticker, {})
         title = info.get("title", "") or info.get("subtitle", "") or ""
 
-        # Parse basic fill data
-        no_price = raw.get("no_price", 0) or raw.get("price", 0)
-        yes_price = raw.get("yes_price", 0) or (100 - no_price if no_price else 0)
-        count = raw.get("count", 0)
+        # Parse basic fill data — API uses dollars, not cents
+        no_price_dollars = float(raw.get("no_price_dollars", 0) or 0)
+        yes_price_dollars = float(raw.get("yes_price_dollars", 0) or 0)
+        no_cents = round(no_price_dollars * 100)
+        yes_cents = round(yes_price_dollars * 100)
+
+        # count_fp is a string like "467.00"
+        count_raw = raw.get("count_fp", raw.get("count", 0))
+        contracts = int(float(count_raw)) if count_raw else 0
+
         side = raw.get("side", "no")
 
-        # If the bot buys NO, collateral = no_price * count / 100
-        if side == "no":
-            no_cents = no_price
-            yes_cents = yes_price
-        else:
-            no_cents = 100 - (raw.get("price", 0) or 0)
-            yes_cents = raw.get("price", 0) or 0
-
-        collateral = (no_cents * count) / 100
-        size = count  # size in dollars = count (each contract is $1 notional)
+        # Collateral = no_price * contracts (in dollars)
+        collateral = no_price_dollars * contracts
+        size = contracts  # each contract is $1 notional
 
         # Parse timestamp
         created = raw.get("created_time", "")
@@ -158,19 +203,27 @@ def fetch_fills_from_api(client, days):
 
         # Extract legs from title
         legs = _parse_legs_from_title(title)
-        sport = _classify_sport_from_ticker(ticker)
+
+        # Classify sport per leg
+        leg_sports = [_classify_sport_from_leg(leg) for leg in legs]
+        # If all "other", try the ticker
+        if all(s == "other" for s in leg_sports):
+            ticker_sport = _classify_sport_from_ticker(ticker)
+            if ticker_sport != "other":
+                leg_sports = [ticker_sport] * len(legs)
+        sports = list(set(leg_sports))
 
         fills.append({
             "timestamp": ts_str,
             "ticker": ticker,
-            "contracts": count,
+            "contracts": contracts,
             "size": size,
             "collateral": round(collateral, 2),
             "yes_cents": yes_cents,
             "no_cents": no_cents,
             "legs": legs,
-            "leg_sports": [sport] * len(legs),
-            "sports": [sport],
+            "leg_sports": leg_sports,
+            "sports": sports,
             "num_legs": len(legs),
             "title": title,
             "creator_id": "",
