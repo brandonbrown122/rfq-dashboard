@@ -151,28 +151,48 @@ def _classify_leg_sport(leg_str):
 def _classify_leg_bet_type(leg_str):
     """Classify a leg's bet type from its description."""
     upper = leg_str.upper()
-    if "| KXNBA" in upper or "| KXMVENBA" in upper or "| KXNCAAMB" in upper or "| KXNHL" in upper:
-        # Sport-specific ticker classification
-        pass
 
-    # Check description keywords
-    if "] ML:" in leg_str or "MONEYLINE" in upper or "GAME-" in upper:
-        return "moneyline"
-    if "SPREAD" in upper or "wins by" in leg_str.lower():
+    # Check market ticker suffix for bet type (e.g. | KXNBAGAME-...-SPREAD, -TOTAL)
+    ticker_part = ""
+    if "| " in leg_str:
+        ticker_part = leg_str.split("| ")[-1].upper()
+
+    # Spread detection
+    if "SPREAD" in upper or "WINS BY" in upper.replace("OVER ", ""):
         return "spread"
-    if "TOTAL" in upper or "OVER " in upper or "UNDER " in upper:
-        # Distinguish game totals from player props
-        if any(k in upper for k in ("PTS", "REB", "AST", "3PM", "BLK", "STL")):
-            return "player_prop"
-        if "GOALS" in upper or "BTTS" in upper:
-            return "total"
-        if "POINTS SCORED" in upper or "TOTAL-" in upper:
-            return "total"
-        return "player_prop"
+    if "-SP" in ticker_part:
+        return "spread"
+
+    # Total / over-under detection
+    if "POINTS SCORED" in upper or "TOTAL-" in ticker_part:
+        return "total"
+    if ("OVER " in upper or "UNDER " in upper) and ("GOALS" in upper or "POINTS" in upper):
+        return "total"
+
+    # BTTS (both teams to score)
     if "BTTS" in upper or "BOTH TEAMS" in upper:
         return "btts"
-    if any(k in upper for k in ("PTS", "REB", "AST", "3PM", "BLK", "STL", "PLAYER")):
+
+    # Player props
+    if any(k in upper for k in ("PTS", "REB", "AST", "3PM", "BLK", "STL")):
         return "player_prop"
+    # Pattern like "Player Name: N+" (e.g. "Donovan Mitchell: 2+")
+    if re.search(r':\s*\d+\+', leg_str):
+        return "player_prop"
+
+    # Moneyline: team name only (no spread/total/prop keywords)
+    # If it has a GAME ticker and no other bet type, it's moneyline
+    if "GAME-" in ticker_part or "GAME-" in upper:
+        return "moneyline"
+
+    # Short legs that are just "yes TeamName" or "no TeamName" are moneylines
+    clean = upper
+    if clean.startswith("YES ") or clean.startswith("NO "):
+        clean = clean[4:] if clean.startswith("YES ") else clean[3:]
+    # If it's just a team name (short, no numbers, no keywords), it's moneyline
+    if len(clean.split()) <= 3 and not any(c.isdigit() for c in clean):
+        return "moneyline"
+
     if "DRAW" in upper:
         return "draw"
     return "other"

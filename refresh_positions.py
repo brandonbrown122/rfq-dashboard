@@ -104,6 +104,27 @@ def _classify_sport_from_ticker(ticker):
     return "other"
 
 
+def _extract_game_from_event(event_ticker):
+    """Extract game matchup from event ticker.
+    e.g. KXNBAGAME-26MAR13CLEDAL → CLE vs DAL
+         KXEPLGAME-26MAR14BURBOU → BUR vs BOU
+    """
+    if not event_ticker:
+        return ""
+    # Pattern: ...-YYMMMDDXXXYYY where XXX and YYY are 3-letter team codes
+    m = re.search(r'-\d{2}[A-Z]{3}\d{2}([A-Z]{3})([A-Z]{3})$', event_ticker)
+    if m:
+        return f"{m.group(1)} vs {m.group(2)}"
+    # Try longer codes (some have 4+ chars)
+    m = re.search(r'-\d{2}[A-Z]{3}\d{2}(.+)$', event_ticker)
+    if m:
+        code = m.group(1)
+        if len(code) >= 6:
+            half = len(code) // 2
+            return f"{code[:half]} vs {code[half:]}"
+    return ""
+
+
 def _parse_legs_from_title(title):
     """Parse leg descriptions from a Kalshi market title.
     SGP titles use comma-separated legs like:
@@ -202,6 +223,7 @@ def fetch_fills_from_api(client, days):
     for ticker, raw in ticker_fills.items():
         info = market_info.get(ticker, {})
         title = info.get("title", "") or info.get("subtitle", "") or ""
+        mve_legs = info.get("mve_selected_legs", [])
 
         # Parse basic fill data — API uses dollars, not cents
         no_price_dollars = float(raw.get("no_price_dollars", 0) or 0)
@@ -227,17 +249,48 @@ def fetch_fills_from_api(client, days):
         except Exception:
             ts_str = created
 
-        # Extract legs from title
-        legs = _parse_legs_from_title(title)
+        # Build legs from mve_selected_legs (has sport/game info) + title parts
+        title_parts = _parse_legs_from_title(title)
 
-        # Classify sport per leg
-        leg_sports = [_classify_sport_from_leg(leg) for leg in legs]
-        # If all "other", try the ticker
-        if all(s == "other" for s in leg_sports):
-            ticker_sport = _classify_sport_from_ticker(ticker)
-            if ticker_sport != "other":
-                leg_sports = [ticker_sport] * len(legs)
-        sports = list(set(leg_sports))
+        legs = []
+        leg_sports = []
+        if mve_legs:
+            for i, mleg in enumerate(mve_legs):
+                evt = mleg.get("event_ticker", "")
+                mkt = mleg.get("market_ticker", "")
+                leg_side = mleg.get("side", "")
+
+                # Classify sport from the leg's market ticker (e.g. KXNBAGAME, KXEPLGAME)
+                sport = _classify_sport_from_ticker(mkt) or _classify_sport_from_ticker(evt)
+                if sport == "other":
+                    sport = _classify_sport_from_ticker(ticker)
+
+                # Extract game from event ticker: KXNBAGAME-26MAR13CLEDAL → CLE vs DAL
+                game = _extract_game_from_event(evt)
+
+                # Build leg description: combine title part with game context
+                if i < len(title_parts):
+                    leg_desc = title_parts[i]
+                else:
+                    leg_desc = f"{leg_side} {mkt}"
+
+                # Append game context and market ticker for filtering
+                if game:
+                    leg_desc = f"{leg_desc} ({game})"
+                leg_desc = f"{leg_desc} | {mkt}"
+
+                legs.append(leg_desc)
+                leg_sports.append(sport)
+        else:
+            # Fallback: use title-based parsing
+            legs = title_parts
+            leg_sports = [_classify_sport_from_leg(leg) for leg in legs]
+            if all(s == "other" for s in leg_sports):
+                ticker_sport = _classify_sport_from_ticker(ticker)
+                if ticker_sport != "other":
+                    leg_sports = [ticker_sport] * len(legs)
+
+        sports = list(set(leg_sports)) if leg_sports else ["other"]
 
         fills.append({
             "timestamp": ts_str,
