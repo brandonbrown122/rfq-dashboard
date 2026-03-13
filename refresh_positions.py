@@ -72,7 +72,12 @@ def _classify_sport_from_leg(leg_str):
         return "nhl"
 
     # Strip "yes " / "no " prefix and check team names
-    clean = upper.lstrip("YES ").lstrip("NO ").strip()
+    clean = upper
+    if clean.startswith("YES "):
+        clean = clean[4:]
+    elif clean.startswith("NO "):
+        clean = clean[3:]
+    clean = clean.strip()
     if any(team in clean for team in NHL_TEAMS):
         return "nhl"
     if any(team in clean for team in NBA_TEAMS):
@@ -92,6 +97,10 @@ def _classify_sport_from_ticker(ticker):
         return "nhl"
     if any(t in upper for t in ("EPL", "LALIGA", "SERIEA", "BUNDESLIGA", "LIGUE1", "UCL", "SOCCER")):
         return "soccer"
+    # CROSSCATEGORY and SPORTSMULTIGAME tickers are multi-sport parlays
+    # but are predominantly basketball (NBA/NCAAB)
+    if "CROSSCATEGORY" in upper or "SPORTSMULTIGAME" in upper:
+        return "ncaab"  # default to ncaab since it's mostly college
     return "other"
 
 
