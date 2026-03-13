@@ -173,6 +173,32 @@ def api_summary():
     })
 
 
+@app.route("/api/fill_velocity")
+def api_fill_velocity():
+    """Count fills in the last 10 min, 1 hour, and 12 hours."""
+    cache = load_cache()
+    positions = cache.get("positions", [])
+    now = datetime.now(timezone.utc)
+
+    windows = {"10m": 600, "1h": 3600, "12h": 43200}
+    counts = {}
+    for label, seconds in windows.items():
+        count = 0
+        for p in positions:
+            ts_str = p.get("timestamp", "")
+            if not ts_str:
+                continue
+            try:
+                ts = datetime.strptime(ts_str.replace(" UTC", ""), "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+                if (now - ts).total_seconds() <= seconds:
+                    count += 1
+            except ValueError:
+                continue
+        counts[label] = count
+
+    return jsonify(counts)
+
+
 @app.route("/api/positions")
 def api_positions():
     positions = get_all_positions()

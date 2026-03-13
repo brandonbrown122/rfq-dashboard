@@ -93,6 +93,13 @@
   <div class="card"><div class="card-label">Settled P&L (7-Day)</div><div class="card-value loading" id="total-pnl">...</div><div class="card-sub" id="pnl-sub"></div><div class="card-sub" id="pnl-today" style="margin-top:6px;color:var(--accent)"></div></div>
 </div>
 
+<!-- Fill Velocity -->
+<div class="grid grid-3 section" id="velocity-cards">
+  <div class="card"><div class="card-label">Fills (Last 10 Min)</div><div class="card-value loading" id="fills-10m">...</div></div>
+  <div class="card"><div class="card-label">Fills (Last 1 Hour)</div><div class="card-value loading" id="fills-1h">...</div></div>
+  <div class="card"><div class="card-label">Fills (Last 12 Hours)</div><div class="card-value loading" id="fills-12h">...</div></div>
+</div>
+
 <!-- Exposure Breakdown -->
 <div class="grid grid-3 section">
   <div class="card">
@@ -318,8 +325,18 @@ async function triggerRefresh() {
   }, 3000);
 }
 
+async function loadFillVelocity() {
+  const d = await fetchJSON('/api/fill_velocity');
+  if (!d) return;
+  for (const key of ['10m', '1h', '12h']) {
+    const el = document.getElementById('fills-' + key);
+    el.textContent = d[key];
+    el.classList.remove('loading');
+  }
+}
+
 async function loadAll() {
-  await Promise.all([loadBalance(), loadSummary()]);
+  await Promise.all([loadBalance(), loadSummary(), loadFillVelocity()]);
   await Promise.all([loadExposure(), loadLegExposure(), loadTopRisk()]);
 }
 
