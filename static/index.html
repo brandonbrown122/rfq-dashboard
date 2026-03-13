@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="data:,">
+<title>RFQ Bot Dashboard</title>
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --text: #e6edf3; --muted: #8b949e; --accent: #58a6ff;
+    --green: #3fb950; --red: #f85149; --yellow: #d29922;
+    --orange: #db6d28;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', monospace; background: var(--bg); color: var(--text); padding: 20px; }
+  h1 { font-size: 1.5em; margin-bottom: 4px; }
+  h2 { font-size: 1.1em; color: var(--accent); margin-bottom: 12px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+  .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 2px solid var(--border); }
+  .header-right { display: flex; align-items: center; gap: 12px; font-size: 0.85em; color: var(--muted); }
+  .refresh-btn { background: var(--accent); color: #000; border: none; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 0.85em; font-weight: 600; }
+  .refresh-btn:hover { opacity: 0.85; }
+  .refresh-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .grid { display: grid; gap: 16px; margin-bottom: 20px; }
+  .grid-4 { grid-template-columns: repeat(4, 1fr); }
+  .grid-2 { grid-template-columns: 1fr 1fr; }
+  .grid-3 { grid-template-columns: 1fr 1fr 1fr; }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+  .card-label { font-size: 0.75em; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+  .card-value { font-size: 1.6em; font-weight: 700; }
+  .card-sub { font-size: 0.8em; color: var(--muted); margin-top: 2px; }
+
+  .positive { color: var(--green); }
+  .negative { color: var(--red); }
+  .neutral { color: var(--yellow); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.85em; }
+  th { text-align: left; padding: 8px 10px; color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--border); font-size: 0.75em; text-transform: uppercase; letter-spacing: 0.3px; }
+  td { padding: 7px 10px; border-bottom: 1px solid var(--border); }
+  tr:hover { background: rgba(88,166,255,0.05); }
+
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.75em; font-weight: 600; }
+  .pill-nba { background: #1d428a33; color: #5b8def; }
+  .pill-ncaab { background: #ff660033; color: var(--orange); }
+  .pill-nhl { background: #00000033; color: #ccc; }
+  .pill-soccer { background: #3fb95033; color: var(--green); }
+  .pill-other { background: #30363d; color: var(--muted); }
+
+  .bar { height: 6px; border-radius: 3px; background: var(--border); margin-top: 4px; }
+  .bar-fill { height: 100%; border-radius: 3px; background: var(--accent); }
+
+  .tabs { display: flex; gap: 4px; margin-bottom: 12px; }
+  .tab { padding: 6px 14px; border: 1px solid var(--border); border-radius: 4px; background: transparent; color: var(--muted); cursor: pointer; font-size: 0.8em; }
+  .tab.active { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 600; }
+
+  .section { margin-bottom: 24px; }
+  .loading { color: var(--muted); font-style: italic; }
+  .error { color: var(--red); }
+
+  .legs-list { font-size: 0.8em; color: var(--muted); margin-top: 4px; }
+  .legs-list span { display: block; padding: 1px 0; }
+
+  .filter-row { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; font-size: 0.8em; }
+  .filter-row select, .filter-row input { background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 4px 8px; border-radius: 4px; font-size: 0.85em; }
+
+  @media (max-width: 900px) {
+    .grid-4 { grid-template-columns: repeat(2, 1fr); }
+    .grid-3 { grid-template-columns: 1fr; }
+    .grid-2 { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>RFQ Bot Dashboard</h1>
+    <span id="last-refresh" style="font-size:0.8em;color:var(--muted)"></span>
+  </div>
+  <div class="header-right">
+    <span id="refresh-status"></span>
+    <button class="refresh-btn" onclick="triggerRefresh()">Refresh Positions</button>
+  </div>
+</div>
+
+<!-- Balance + Summary Cards -->
+<div class="grid grid-4 section" id="summary-cards">
+  <div class="card"><div class="card-label">Balance</div><div class="card-value loading" id="balance-val">...</div><div class="card-sub" id="balance-sub"></div></div>
+  <div class="card"><div class="card-label">Open Positions</div><div class="card-value loading" id="open-count">...</div><div class="card-sub" id="open-collateral"></div></div>
+  <div class="card"><div class="card-label">Win Rate (7-Day)</div><div class="card-value loading" id="win-rate">...</div><div class="card-sub" id="win-rate-sub"></div><div class="card-sub" id="win-rate-today" style="margin-top:6px;color:var(--accent)"></div></div>
+  <div class="card"><div class="card-label">Settled P&L (7-Day)</div><div class="card-value loading" id="total-pnl">...</div><div class="card-sub" id="pnl-sub"></div><div class="card-sub" id="pnl-today" style="margin-top:6px;color:var(--accent)"></div></div>
+</div>
+
+<!-- Exposure Breakdown -->
+<div class="grid grid-3 section">
+  <div class="card">
+    <h2>Exposure by Sport</h2>
+    <div id="exposure-sport"><span class="loading">Loading...</span></div>
+  </div>
+  <div class="card">
+    <h2>Exposure by Bet Type</h2>
+    <div id="exposure-bettype"><span class="loading">Loading...</span></div>
+  </div>
+  <div class="card">
+    <h2>Exposure by # Legs</h2>
+    <div id="exposure-legs"><span class="loading">Loading...</span></div>
+  </div>
+</div>
+
+<!-- Leg Exposure Table -->
+<div class="card section">
+  <h2>Per-Leg Exposure (Open Positions)</h2>
+  <div class="filter-row">
+    <label>Sport:</label>
+    <select id="leg-sport-filter" onchange="loadLegExposure()">
+      <option value="">All</option>
+      <option value="nba">NBA</option>
+      <option value="ncaab">NCAAB</option>
+      <option value="nhl">NHL</option>
+      <option value="soccer">Soccer</option>
+    </select>
+    <label>Type:</label>
+    <select id="leg-type-filter" onchange="loadLegExposure()">
+      <option value="">All</option>
+      <option value="moneyline">Moneyline</option>
+      <option value="spread">Spread</option>
+      <option value="total">Total</option>
+      <option value="player_prop">Player Prop</option>
+      <option value="btts">BTTS</option>
+    </select>
+  </div>
+  <div id="leg-exposure-table"><span class="loading">Loading...</span></div>
+</div>
+
+<!-- Top Risk Positions -->
+<div class="card section">
+  <h2>Highest Risk Open Positions</h2>
+  <div id="top-risk-table"><span class="loading">Loading...</span></div>
+</div>
+
+<!-- Creator Summary -->
+<div class="card section">
+  <h2>Top Creators (Open Positions)</h2>
+  <div id="creators-table"><span class="loading">Loading...</span></div>
+</div>
+
+<script>
+const API = '';
+
+async function fetchJSON(url) {
+  try {
+    const r = await fetch(API + url);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return await r.json();
+  } catch (e) {
+    console.error(`Fetch ${url}:`, e);
+    return null;
+  }
+}
+
+function fmt$(v) { return v >= 0 ? `$${v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}` : `-$${Math.abs(v).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}`; }
+function fmtPct(v) { return v.toFixed(1) + '%'; }
+function sportPill(s) { return `<span class="pill pill-${s}">${s.toUpperCase()}</span>`; }
+
+function barHTML(value, max) {
+  const pct = max > 0 ? Math.min(value / max * 100, 100) : 0;
+  return `<div class="bar"><div class="bar-fill" style="width:${pct}%"></div></div>`;
+}
+
+async function loadBalance() {
+  const d = await fetchJSON('/api/balance');
+  if (!d || d.error) { document.getElementById('balance-val').textContent = 'Error'; return; }
+  document.getElementById('balance-val').textContent = fmt$(d.total);
+  document.getElementById('balance-val').classList.remove('loading');
+  document.getElementById('balance-sub').textContent = `Cash: ${fmt$(d.balance)} | Portfolio: ${fmt$(d.portfolio_value)}`;
+}
+
+async function loadSummary() {
+  const d = await fetchJSON('/api/summary');
+  if (!d) return;
+
+  const el = (id) => document.getElementById(id);
+
+  el('open-count').textContent = d.open_positions;
+  el('open-count').classList.remove('loading');
+  el('open-collateral').textContent = `Collateral: ${fmt$(d.open_collateral)} | Size: ${fmt$(d.open_size)}`;
+
+  el('win-rate').textContent = fmtPct(d.win_rate);
+  el('win-rate').classList.remove('loading');
+  el('win-rate-sub').textContent = `W: ${d.wins} | L: ${d.losses} | Settled: ${d.settled_positions}`;
+
+  // Today's win rate
+  if (d.today) {
+    const t = d.today;
+    const todaySettled = t.wins + t.losses;
+    if (todaySettled > 0) {
+      el('win-rate-today').textContent = `Today: ${fmtPct(t.win_rate)} (W: ${t.wins} | L: ${t.losses})`;
+    } else {
+      el('win-rate-today').textContent = `Today: No settlements yet`;
+    }
+  }
+
+  const pnlEl = el('total-pnl');
+  pnlEl.textContent = fmt$(d.total_pnl);
+  pnlEl.classList.remove('loading');
+  pnlEl.classList.add(d.total_pnl >= 0 ? 'positive' : 'negative');
+  el('pnl-sub').textContent = `${d.settled_positions} settled positions`;
+
+  // Today's P&L
+  if (d.today) {
+    const t = d.today;
+    const todayEl = el('pnl-today');
+    todayEl.textContent = `Today: ${fmt$(t.pnl)} (${t.settled} settled, ${t.open} opened)`;
+    todayEl.style.color = t.pnl >= 0 ? 'var(--green)' : 'var(--red)';
+  }
+
+  if (d.last_refresh) {
+    const dt = new Date(d.last_refresh);
+    el('last-refresh').textContent = `Last refresh: ${dt.toLocaleString()}`;
+  }
+}
+
+function renderExposureTable(containerId, groups, labelHeader) {
+  const el = document.getElementById(containerId);
+  if (!groups || groups.length === 0) { el.innerHTML = '<span class="muted">No data</span>'; return; }
+
+  const maxCollateral = Math.max(...groups.map(g => g.collateral));
+
+  let html = '<table><tr><th>' + labelHeader + '</th><th>Collateral</th><th>Count</th><th></th></tr>';
+  for (const g of groups) {
+    html += `<tr>
+      <td>${g.key === 'nba' || g.key === 'ncaab' || g.key === 'nhl' || g.key === 'soccer' ? sportPill(g.key) : g.key}</td>
+      <td>${fmt$(g.collateral)}</td>
+      <td>${g.count}</td>
+      <td style="width:30%">${barHTML(g.collateral, maxCollateral)}</td>
+    </tr>`;
+  }
+  html += '</table>';
+  el.innerHTML = html;
+}
+
+async function loadExposure() {
+  const [sport, betType, legs] = await Promise.all([
+    fetchJSON('/api/exposure/sport'),
+    fetchJSON('/api/exposure/bet_type'),
+    fetchJSON('/api/exposure/num_legs'),
+  ]);
+
+  if (sport) renderExposureTable('exposure-sport', sport.groups, 'Sport');
+  if (betType) renderExposureTable('exposure-bettype', betType.groups, 'Bet Type');
+  if (legs) renderExposureTable('exposure-legs', legs.groups.sort((a,b) => parseInt(a.key) - parseInt(b.key)), '# Legs');
+}
+
+async function loadLegExposure() {
+  const sport = document.getElementById('leg-sport-filter').value;
+  const betType = document.getElementById('leg-type-filter').value;
+  let url = '/api/leg_exposure?limit=50';
+  if (sport) url += '&sport=' + sport;
+  if (betType) url += '&bet_type=' + betType;
+
+  const d = await fetchJSON(url);
+  const el = document.getElementById('leg-exposure-table');
+  if (!d || d.legs.length === 0) { el.innerHTML = '<span class="muted">No data</span>'; return; }
+
+  const maxCol = Math.max(...d.legs.map(l => l.collateral));
+  let html = '<table><tr><th>Leg</th><th>Sport</th><th>Type</th><th>Collateral</th><th>Parlays</th><th></th></tr>';
+  for (const l of d.legs) {
+    html += `<tr>
+      <td style="max-width:350px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${l.leg}">${l.leg}</td>
+      <td>${sportPill(l.sport)}</td>
+      <td>${l.bet_type}</td>
+      <td>${fmt$(l.collateral)}</td>
+      <td>${l.count}</td>
+      <td style="width:20%">${barHTML(l.collateral, maxCol)}</td>
+    </tr>`;
+  }
+  html += '</table>';
+  el.innerHTML = html;
+}
+
+async function loadTopRisk() {
+  const d = await fetchJSON('/api/top_risk?n=20');
+  const el = document.getElementById('top-risk-table');
+  if (!d || d.positions.length === 0) { el.innerHTML = '<span class="muted">No data</span>'; return; }
+
+  let html = '<table><tr><th>Time</th><th>Sports</th><th>Legs</th><th>Collateral</th><th>Size</th><th>Price</th><th>Details</th></tr>';
+  for (const p of d.positions) {
+    const sports = (p.sports || []).map(s => sportPill(s)).join(' ');
+    const legsHTML = (p.legs || []).map(l => `<span>${l.replace(/\s*\|\s*KX\S+$/, '')}</span>`).join('');
+    html += `<tr>
+      <td style="white-space:nowrap">${p.timestamp || ''}</td>
+      <td>${sports}</td>
+      <td>${p.num_legs || 0}</td>
+      <td><strong>${fmt$(p.collateral)}</strong></td>
+      <td>${fmt$(p.size)}</td>
+      <td>${p.yes_cents || 0}c/${p.no_cents || 0}c</td>
+      <td><div class="legs-list">${legsHTML}</div></td>
+    </tr>`;
+  }
+  html += '</table>';
+  el.innerHTML = html;
+}
+
+async function loadCreators() {
+  const d = await fetchJSON('/api/creators');
+  const el = document.getElementById('creators-table');
+  if (!d || d.creators.length === 0) { el.innerHTML = '<span class="muted">No data</span>'; return; }
+
+  let html = '<table><tr><th>Creator</th><th>Open Parlays</th><th>Collateral</th><th>Size</th></tr>';
+  for (const c of d.creators.slice(0, 25)) {
+    const short = c.creator_id.length > 16 ? c.creator_id.slice(0, 12) + '...' : c.creator_id;
+    html += `<tr>
+      <td title="${c.creator_id}">${short}</td>
+      <td>${c.count}</td>
+      <td>${fmt$(c.collateral)}</td>
+      <td>${fmt$(c.size)}</td>
+    </tr>`;
+  }
+  html += '</table>';
+  el.innerHTML = html;
+}
+
+async function triggerRefresh() {
+  const btn = document.querySelector('.refresh-btn');
+  btn.disabled = true;
+  btn.textContent = 'Refreshing...';
+  document.getElementById('refresh-status').textContent = 'Running...';
+
+  await fetch(API + '/api/refresh', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({days: 7}) });
+
+  // Poll until done
+  const poll = setInterval(async () => {
+    const s = await fetchJSON('/api/refresh_status');
+    if (s && !s.running) {
+      clearInterval(poll);
+      btn.disabled = false;
+      btn.textContent = 'Refresh Positions';
+      document.getElementById('refresh-status').textContent = '';
+      loadAll();
+    }
+  }, 3000);
+}
+
+async function loadAll() {
+  await Promise.all([loadBalance(), loadSummary()]);
+  await Promise.all([loadExposure(), loadLegExposure(), loadTopRisk(), loadCreators()]);
+}
+
+loadAll();
+// Auto-refresh balance every 60s
+setInterval(loadBalance, 60000);
+</script>
+
+</body>
+</html>
