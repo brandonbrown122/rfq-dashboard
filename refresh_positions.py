@@ -27,16 +27,29 @@ from kalshi_api import get_client, get_market_settlement, get_fills, get_market_
 from data_engine import parse_fill_blocks, save_cache, FILLS_FILE, CACHE_FILE
 
 
+NBA_TEAMS = {
+    "ATLANTA", "HAWKS", "BOSTON", "CELTICS", "BROOKLYN", "NETS", "CHARLOTTE", "HORNETS",
+    "CHICAGO", "BULLS", "CLEVELAND", "CAVALIERS", "DALLAS", "MAVERICKS", "DENVER", "NUGGETS",
+    "DETROIT", "PISTONS", "GOLDEN STATE", "WARRIORS", "HOUSTON", "ROCKETS", "INDIANA", "PACERS",
+    "LOS ANGELES L", "LAKERS", "LOS ANGELES C", "CLIPPERS", "MEMPHIS", "GRIZZLIES",
+    "MIAMI", "HEAT", "MILWAUKEE", "BUCKS", "MINNESOTA", "TIMBERWOLVES", "NEW ORLEANS", "PELICANS",
+    "NEW YORK", "KNICKS", "OKLAHOMA CITY", "THUNDER", "ORLANDO", "MAGIC", "PHILADELPHIA", "76ERS",
+    "PHOENIX", "SUNS", "PORTLAND", "TRAIL BLAZERS", "BLAZERS", "SACRAMENTO", "KINGS",
+    "SAN ANTONIO", "SPURS", "TORONTO", "RAPTORS", "UTAH", "JAZZ", "WASHINGTON", "WIZARDS",
+}
+
+NHL_TEAMS = {
+    "BRUINS", "SABRES", "RED WINGS", "PANTHERS", "CANADIENS", "SENATORS", "LIGHTNING",
+    "MAPLE LEAFS", "HURRICANES", "BLUE JACKETS", "DEVILS", "ISLANDERS", "RANGERS",
+    "FLYERS", "PENGUINS", "CAPITALS", "BLACKHAWKS", "AVALANCHE", "STARS", "WILD",
+    "PREDATORS", "BLUES", "JETS", "FLAMES", "OILERS", "CANUCKS", "DUCKS",
+    "COYOTES", "KRAKEN", "SHARKS", "GOLDEN KNIGHTS", "KNIGHTS",
+}
+
+
 def _classify_sport_from_leg(leg_str):
     """Classify sport from a leg description."""
     upper = leg_str.upper()
-    # NBA team names / player indicators
-    nba_teams = ["LAKERS", "CELTICS", "WARRIORS", "NETS", "KNICKS", "BUCKS", "76ERS",
-                 "HEAT", "SUNS", "MAVERICKS", "NUGGETS", "CLIPPERS", "THUNDER", "CAVALIERS",
-                 "TIMBERWOLVES", "GRIZZLIES", "PELICANS", "HAWKS", "BULLS", "PACERS",
-                 "MAGIC", "RAPTORS", "ROCKETS", "SPURS", "KINGS", "BLAZERS", "PISTONS",
-                 "HORNETS", "WIZARDS", "JAZZ"]
-    ncaab_indicators = ["MARCH MADNESS", "NCAAB", "NCAAMB", "TOURNAMENT"]
 
     # Check ticker suffix if present
     if "KXNBA" in upper or "KXMVENBA" in upper:
@@ -49,10 +62,7 @@ def _classify_sport_from_leg(leg_str):
         return "soccer"
 
     # Bet type keywords for sport detection
-    if any(k in upper for k in ("PTS", "REB", "AST", "3PM", "BLK", "STL", "POINTS SCORED", "POINTS")):
-        # Could be NBA or NCAAB — check for college indicators
-        if any(k in upper for k in ncaab_indicators):
-            return "ncaab"
+    if any(k in upper for k in ("PTS", "REB", "AST", "3PM", "BLK", "STL", "POINTS SCORED")):
         return "nba"
     if "WINS BY OVER" in upper and "POINTS" in upper:
         return "nba"
@@ -60,6 +70,13 @@ def _classify_sport_from_leg(leg_str):
         return "soccer"
     if any(k in upper for k in ("SAVES", "SHOTS ON GOAL")):
         return "nhl"
+
+    # Strip "yes " / "no " prefix and check team names
+    clean = upper.lstrip("YES ").lstrip("NO ").strip()
+    if any(team in clean for team in NHL_TEAMS):
+        return "nhl"
+    if any(team in clean for team in NBA_TEAMS):
+        return "nba"
 
     return "other"
 
