@@ -4,5 +4,6 @@ __pycache__/
 *.pem
 .DS_Store
 positions_cache.json
+market_info_cache.json
 *.log
 *.jsonl

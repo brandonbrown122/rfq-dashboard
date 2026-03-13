@@ -22,6 +22,7 @@ from collections import defaultdict
 
 BASE_DIR = Path(__file__).parent.parent
 CACHE_FILE = Path(__file__).parent / "positions_cache.json"
+MARKET_INFO_CACHE_FILE = Path(__file__).parent / "market_info_cache.json"
 FILLS_FILE = BASE_DIR / "unified_rfq_fills.txt"
 
 
@@ -214,6 +215,22 @@ def load_cache():
 def save_cache(data):
     with open(CACHE_FILE, "w") as f:
         json.dump(data, f, indent=2)
+
+
+def load_market_info_cache():
+    """Load cached market info (titles, legs, sport) to avoid re-fetching."""
+    if MARKET_INFO_CACHE_FILE.exists():
+        try:
+            with open(MARKET_INFO_CACHE_FILE) as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+
+def save_market_info_cache(data):
+    with open(MARKET_INFO_CACHE_FILE, "w") as f:
+        json.dump(data, f)
 
 
 # ─── Combined view: cached positions + fresh fills ───

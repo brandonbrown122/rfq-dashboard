@@ -140,12 +140,6 @@
   <div id="top-risk-table"><span class="loading">Loading...</span></div>
 </div>
 
-<!-- Creator Summary -->
-<div class="card section">
-  <h2>Top Creators (Open Positions)</h2>
-  <div id="creators-table"><span class="loading">Loading...</span></div>
-</div>
-
 <script>
 const API = '';
 
@@ -303,25 +297,6 @@ async function loadTopRisk() {
   el.innerHTML = html;
 }
 
-async function loadCreators() {
-  const d = await fetchJSON('/api/creators');
-  const el = document.getElementById('creators-table');
-  if (!d || d.creators.length === 0) { el.innerHTML = '<span class="muted">No data</span>'; return; }
-
-  let html = '<table><tr><th>Creator</th><th>Open Parlays</th><th>Collateral</th><th>Size</th></tr>';
-  for (const c of d.creators.slice(0, 25)) {
-    const short = c.creator_id.length > 16 ? c.creator_id.slice(0, 12) + '...' : c.creator_id;
-    html += `<tr>
-      <td title="${c.creator_id}">${short}</td>
-      <td>${c.count}</td>
-      <td>${fmt$(c.collateral)}</td>
-      <td>${fmt$(c.size)}</td>
-    </tr>`;
-  }
-  html += '</table>';
-  el.innerHTML = html;
-}
-
 async function triggerRefresh() {
   const btn = document.querySelector('.refresh-btn');
   btn.disabled = true;
@@ -345,7 +320,7 @@ async function triggerRefresh() {
 
 async function loadAll() {
   await Promise.all([loadBalance(), loadSummary()]);
-  await Promise.all([loadExposure(), loadLegExposure(), loadTopRisk(), loadCreators()]);
+  await Promise.all([loadExposure(), loadLegExposure(), loadTopRisk()]);
 }
 
 loadAll();

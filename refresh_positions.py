@@ -24,7 +24,10 @@ sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from kalshi_api import get_client, get_market_settlement, get_fills, get_market_info
-from data_engine import parse_fill_blocks, save_cache, FILLS_FILE, CACHE_FILE
+from data_engine import (
+    parse_fill_blocks, save_cache, FILLS_FILE, CACHE_FILE,
+    load_market_info_cache, save_market_info_cache,
+)
 
 
 NBA_TEAMS = {
@@ -196,27 +199,46 @@ def fetch_fills_from_api(client, days):
 
     print(f"[refresh] {len(ticker_fills)} unique tickers")
 
-    # Fetch market info for titles/legs (concurrent)
+    # Fetch market info for titles/legs (with persistent cache)
+    market_info_cache = load_market_info_cache()
     market_info = {}
-    tickers = list(ticker_fills.keys())
-    print(f"[refresh] Fetching market info for {len(tickers)} tickers...")
+    tickers_to_fetch = []
 
-    fetched = 0
-    with ThreadPoolExecutor(max_workers=8) as pool:
-        futures = {pool.submit(get_market_info, client, t): t for t in tickers}
-        for future in as_completed(futures):
-            ticker = futures[future]
-            try:
-                info = future.result()
-                if info:
-                    market_info[ticker] = info
-            except Exception:
-                pass
-            fetched += 1
-            if fetched % 100 == 0:
-                print(f"  Fetched market info: {fetched}/{len(tickers)}...")
+    for t in ticker_fills:
+        if t in market_info_cache:
+            market_info[t] = market_info_cache[t]
+        else:
+            tickers_to_fetch.append(t)
 
-    print(f"[refresh] Got market info for {len(market_info)} tickers")
+    print(f"[refresh] Market info: {len(market_info)} cached, {len(tickers_to_fetch)} to fetch")
+
+    if tickers_to_fetch:
+        fetched = 0
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            futures = {pool.submit(get_market_info, client, t): t for t in tickers_to_fetch}
+            for future in as_completed(futures):
+                ticker = futures[future]
+                try:
+                    info = future.result()
+                    if info:
+                        # Store only the fields we need to keep cache small
+                        cached = {
+                            "title": info.get("title", ""),
+                            "mve_selected_legs": info.get("mve_selected_legs", []),
+                            "status": info.get("status", ""),
+                            "result": info.get("result", ""),
+                        }
+                        market_info[ticker] = cached
+                        market_info_cache[ticker] = cached
+                except Exception:
+                    pass
+                fetched += 1
+                if fetched % 100 == 0:
+                    print(f"  Fetched market info: {fetched}/{len(tickers_to_fetch)}...")
+
+        # Save updated cache
+        save_market_info_cache(market_info_cache)
+        print(f"[refresh] Fetched {fetched} new, total cache: {len(market_info_cache)}")
 
     # Build fill dicts matching the local-file format
     fills = []
