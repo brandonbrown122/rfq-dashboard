@@ -110,6 +110,12 @@
   <div class="card"><div class="card-label">Fills (Last 12 Hours)</div><div class="card-value loading" id="fills-12h">...</div></div>
 </div>
 
+<!-- Recent Fills -->
+<div class="card section">
+  <h2>Latest Fills</h2>
+  <div id="recent-fills"><span class="loading">Loading...</span></div>
+</div>
+
 <!-- Exposure Breakdown -->
 <div class="grid grid-3 section">
   <div class="card">
@@ -252,6 +258,38 @@ function renderExposureTable(containerId, groups, labelHeader) {
   el.innerHTML = html;
 }
 
+async function loadRecentFills() {
+  const d = await fetchJSON('/api/positions');
+  const el = document.getElementById('recent-fills');
+  if (!d || !d.positions || d.positions.length === 0) { el.innerHTML = '<span class="muted">No fills yet</span>'; return; }
+
+  // Sort by timestamp descending, take last 5
+  const recent = d.positions
+    .sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''))
+    .slice(0, 5);
+
+  let html = '<table><tr><th>Time</th><th>Sports</th><th>Legs</th><th>Collateral</th><th>Price</th><th>Status</th><th>Details</th></tr>';
+  for (const p of recent) {
+    const sports = (p.sports || []).map(s => sportPill(s)).join(' ');
+    const legsHTML = (p.legs || []).map(l => `<span>${l.replace(/\s*\|\s*KX\S+$/, '')}</span>`).join('');
+    const status = p.settled
+      ? `<span class="${p.outcome === 'win' ? 'positive' : p.outcome === 'loss' ? 'negative' : 'muted'}">${(p.outcome || 'settled').toUpperCase()}</span>`
+      : '<span class="neutral">OPEN</span>';
+    const ts = (p.timestamp || '').replace(' UTC', '');
+    html += `<tr>
+      <td style="white-space:nowrap">${ts}</td>
+      <td>${sports}</td>
+      <td>${p.num_legs || 0}</td>
+      <td><strong>${fmt$(p.collateral || 0)}</strong></td>
+      <td>${p.yes_cents || 0}c/${p.no_cents || 0}c</td>
+      <td>${status}</td>
+      <td><div class="legs-list">${legsHTML}</div></td>
+    </tr>`;
+  }
+  html += '</table>';
+  el.innerHTML = html;
+}
+
 async function loadExposure() {
   const [sport, betType, legs] = await Promise.all([
     fetchJSON('/api/exposure/sport'),
@@ -347,7 +385,7 @@ async function loadFillVelocity() {
 
 async function loadAll() {
   await Promise.all([loadBalance(), loadSummary(), loadFillVelocity()]);
-  await Promise.all([loadExposure(), loadLegExposure(), loadTopRisk()]);
+  await Promise.all([loadRecentFills(), loadExposure(), loadLegExposure(), loadTopRisk()]);
 }
 
 loadAll();
