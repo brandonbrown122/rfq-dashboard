@@ -3,7 +3,8 @@
 RFQ Bot Dashboard Server
 
 Endpoints:
-    GET /                     — Dashboard UI
+    GET /                     — Dashboard UI (Positions tab)
+    GET /cascade              — Cascade Visualizer tab
     GET /api/balance          — Kalshi portfolio balance
     GET /api/positions        — All cached positions (open + settled)
     GET /api/open             — Open positions only
@@ -15,9 +16,15 @@ Endpoints:
     GET /api/top_risk         — Highest-risk open positions
     GET /api/summary          — Quick summary stats
     POST /api/refresh         — Trigger a position refresh (async)
+    GET /api/ops/exposure     — Ops exposure (parlay JSON files)
+    GET /api/ops/balance      — Ops balance (daily starting balance)
+    GET /api/ops/fills-timeline — Ops fills timeline
+    GET /api/ops/stats        — Ops bot stats
 """
 import json
+import logging
 import os
+import re
 import sys
 import subprocess
 import threading
@@ -319,6 +326,202 @@ def api_refresh_status():
         "running": _refresh_running,
         "last_refresh": cache.get("last_refresh"),
         "total_cached": len(cache.get("positions", [])),
+    })
+
+
+# ─── Cascade Visualizer tab ───
+
+@app.route("/cascade")
+def cascade():
+    return send_from_directory(app.static_folder, "cascade.html")
+
+
+# ─── Ops API (powers the Cascade Visualizer) ───
+# These read data files from the project root, same as archive/dashboard_server.py
+
+PROJECT_ROOT = str(Path(__file__).parent.parent)
+_OPS_CACHE_TTL = 30  # seconds
+_ops_cache: dict = {}
+
+# Exposure file mapping
+_OPS_EXPOSURE_FILES = {
+    "nba": "optic_parlay_exposure.json",
+    "ncaab": "ncaab_parlay_exposure.json",
+    "soccer": "soccer_parlay_exposure.json",
+    "unified": "unified_parlay_exposure.json",
+}
+
+_OPS_FILL_FILES = {
+    "unified": "unified_rfq_fills.txt",
+    "nba": "optic_rfq_fills.txt",
+    "ncaab": "ncaab_rfq_fills.txt",
+    "soccer": "soccer_rfq_fills.txt",
+}
+
+_FILL_HEADER_RE = re.compile(r"FILL @ (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) UTC")
+_COLLATERAL_RE = re.compile(r"Collateral:\s*\$([0-9,.]+)")
+
+
+def _ops_read_json(filename, default=None):
+    path = os.path.join(PROJECT_ROOT, filename)
+    key = f"ops_json:{path}"
+    now = time.time()
+    cached = _ops_cache.get(key)
+    if cached and (now - cached["ts"]) < _OPS_CACHE_TTL:
+        return cached["data"]
+    try:
+        with open(path, "r") as f:
+            data = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        data = default if default is not None else {}
+    _ops_cache[key] = {"ts": now, "data": data}
+    return data
+
+
+def _ops_read_text(filename):
+    path = os.path.join(PROJECT_ROOT, filename)
+    key = f"ops_text:{path}"
+    now = time.time()
+    cached = _ops_cache.get(key)
+    if cached and (now - cached["ts"]) < _OPS_CACHE_TTL:
+        return cached["data"]
+    try:
+        with open(path, "r") as f:
+            data = f.read()
+    except FileNotFoundError:
+        data = ""
+    _ops_cache[key] = {"ts": now, "data": data}
+    return data
+
+
+def _ops_parse_fills(text, date_filter=None):
+    _SPORT_PATTERNS = {
+        "nba": re.compile(r"KXNBA"),
+        "ncaab": re.compile(r"KXNCAAB|KXCBB", re.IGNORECASE),
+        "soccer": re.compile(r"KXEPL|KXLALIGA|KXSERIEA|KXUCL|KXBUNDES|KXLIGUE|KXMLS", re.IGNORECASE),
+    }
+    fills = []
+    current_ts = current_hour = current_sport = current_date_str = None
+    current_collateral = 0.0
+    for line in text.splitlines():
+        m = _FILL_HEADER_RE.search(line)
+        if m:
+            if current_ts is not None and (date_filter is None or current_date_str == date_filter):
+                fills.append({"timestamp": current_ts, "hour": current_hour,
+                              "collateral": current_collateral, "sport": current_sport or "unknown"})
+            ts_str = m.group(1)
+            current_ts = ts_str
+            current_date_str = ts_str[:10]
+            current_hour = int(ts_str[11:13])
+            current_collateral = 0.0
+            current_sport = None
+            continue
+        m = _COLLATERAL_RE.search(line)
+        if m:
+            current_collateral = float(m.group(1).replace(",", ""))
+            continue
+        if current_sport is None:
+            for sport, pat in _SPORT_PATTERNS.items():
+                if pat.search(line):
+                    current_sport = sport
+                    break
+    if current_ts is not None and (date_filter is None or current_date_str == date_filter):
+        fills.append({"timestamp": current_ts, "hour": current_hour,
+                      "collateral": current_collateral, "sport": current_sport or "unknown"})
+    return fills
+
+
+@app.route("/api/ops/exposure")
+def ops_exposure():
+    sport = request.args.get("sport", "unified").lower()
+    unified_data = _ops_read_json(_OPS_EXPOSURE_FILES["unified"])
+    if sport == "unified":
+        data = unified_data
+    else:
+        try:
+            from unified_utils import classify_parlay
+            data = {k: v for k, v in unified_data.items()
+                    if classify_parlay(v) in (sport, "cross")}
+        except ImportError:
+            data = unified_data
+        legacy_file = _OPS_EXPOSURE_FILES.get(sport)
+        if legacy_file and legacy_file != _OPS_EXPOSURE_FILES["unified"]:
+            legacy = _ops_read_json(legacy_file)
+            if legacy:
+                data = {**data, **legacy}
+    return jsonify(data)
+
+
+@app.route("/api/ops/balance")
+def ops_balance():
+    daily = _ops_read_json("daily_starting_balance.json", default={})
+    stats = _ops_read_json("unified_bot_stats.json", default={})
+    submitted = stats.get("quotes_submitted_count", 0)
+    accepted = stats.get("quotes_accepted_count", 0)
+    fill_rate = (accepted / submitted * 100) if submitted > 0 else 0.0
+    return jsonify({
+        "cash": daily.get("cash", 0),
+        "portfolio": daily.get("portfolio", 0),
+        "total": daily.get("total", 0),
+        "starting_balance": daily.get("total", 0),
+        "total_collateral_committed": stats.get("total_collateral_committed", 0),
+        "quotes_submitted": submitted,
+        "quotes_accepted": accepted,
+        "fill_rate": round(fill_rate, 2),
+        "as_of": stats.get("last_updated", ""),
+    })
+
+
+@app.route("/api/ops/fills-timeline")
+def ops_fills_timeline():
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    all_fills = []
+    for label, fname in _OPS_FILL_FILES.items():
+        text = _ops_read_text(fname)
+        if text:
+            all_fills.extend(_ops_parse_fills(text, date_filter=today))
+    seen = set()
+    unique = []
+    for f in all_fills:
+        if f["timestamp"] not in seen:
+            seen.add(f["timestamp"])
+            unique.append(f)
+    hourly_map = {}
+    for f in unique:
+        h = f["hour"]
+        if h not in hourly_map:
+            hourly_map[h] = {"hour": h, "count": 0, "exposure": 0.0}
+        hourly_map[h]["count"] += 1
+        hourly_map[h]["exposure"] += f["collateral"]
+    hourly = sorted(hourly_map.values(), key=lambda x: x["hour"])
+    for bucket in hourly:
+        bucket["exposure"] = round(bucket["exposure"], 2)
+    cumulative = []
+    running = 0.0
+    for bucket in hourly:
+        running += bucket["exposure"]
+        cumulative.append({"hour": bucket["hour"], "cumulative_exposure": round(running, 2)})
+    total_exposure = sum(f["collateral"] for f in unique)
+    return jsonify({
+        "date": today, "total_fills": len(unique),
+        "total_exposure": round(total_exposure, 2),
+        "hourly": hourly, "cumulative": cumulative,
+    })
+
+
+@app.route("/api/ops/stats")
+def ops_stats():
+    unified = _ops_read_json("unified_bot_stats.json", default={})
+    submitted = unified.get("quotes_submitted_count", 0)
+    accepted = unified.get("quotes_accepted_count", 0)
+    fill_rate = (accepted / submitted * 100) if submitted > 0 else 0.0
+    return jsonify({
+        "bot_running": False,
+        "quotes_submitted": submitted,
+        "quotes_accepted": accepted,
+        "total_collateral": unified.get("total_collateral_committed", 0),
+        "fill_rate": round(fill_rate, 2),
+        "last_updated": unified.get("last_updated", ""),
     })
 
 

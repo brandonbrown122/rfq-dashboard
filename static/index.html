@@ -56,6 +56,11 @@
   .tab.active { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 600; }
 
   .section { margin-bottom: 24px; }
+  .page-tabs { display: flex; gap: 4px; margin-bottom: 16px; }
+  .page-tab { padding: 8px 20px; border-radius: 6px 6px 0 0; font-size: 0.85em; font-weight: 600; text-decoration: none; color: var(--muted); background: var(--surface); border: 1px solid var(--border); border-bottom: none; transition: all 0.2s; }
+  .page-tab:hover { color: var(--text); }
+  .page-tab.active { background: var(--bg); color: var(--accent); border-color: var(--accent); }
+
   .loading { color: var(--muted); font-style: italic; }
   .error { color: var(--red); }
 
@@ -73,6 +78,11 @@
 </style>
 </head>
 <body>
+
+<div class="page-tabs">
+  <a href="/" class="page-tab active">Positions</a>
+  <a href="/cascade" class="page-tab">Cascade Visualizer</a>
+</div>
 
 <div class="header">
   <div>

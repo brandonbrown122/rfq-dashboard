@@ -1,0 +1,1799 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Billy Bets — Cascade Visualizer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════ RESET & BASE ═══════════════════════ */
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0a0e1a;--bg2:#0f1428;--bg3:#141a32;
+  --blue:#00d4ff;--pink:#ff3366;--green:#00ff88;
+  --purple:#7b68ee;--orange:#ff6b35;--yellow:#ffd700;
+  --text:#e0e8ff;--text2:#8892b0;--text3:#4a5568;
+  --glass:rgba(15,20,40,0.7);--glass2:rgba(15,20,40,0.5);
+  --border:rgba(0,212,255,0.12);--border2:rgba(0,212,255,0.25);
+  --radius:12px;--radius-sm:8px;
+  --font:'Inter',sans-serif;--mono:'JetBrains Mono',monospace;
+}
+html,body{height:100%;overflow:hidden}
+body{
+  font-family:var(--font);color:var(--text);background:var(--bg);
+  background-image:
+    radial-gradient(ellipse at 20% 50%,rgba(0,212,255,0.04) 0%,transparent 60%),
+    radial-gradient(ellipse at 80% 50%,rgba(255,51,102,0.03) 0%,transparent 60%),
+    linear-gradient(rgba(0,212,255,0.015) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(0,212,255,0.015) 1px,transparent 1px);
+  background-size:100% 100%,100% 100%,50px 50px,50px 50px;
+}
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(0,212,255,0.2);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:rgba(0,212,255,0.4)}
+
+/* ═══════════════════════ LAYOUT ═══════════════════════ */
+#app{
+  display:grid;height:100vh;
+  grid-template-rows:auto 56px 1fr auto;
+  grid-template-columns:1fr 380px;
+  grid-template-areas:
+    "header header"
+    "scoreboard scoreboard"
+    "cascade sidebar"
+    "stats stats";
+  gap:8px;padding:8px;
+}
+#header{grid-area:header;display:flex;align-items:center;justify-content:space-between;padding:6px 16px;gap:12px;flex-wrap:wrap}
+#scoreboard-bar{grid-area:scoreboard;display:flex;gap:10px;align-items:center;overflow-x:auto;padding:0 8px}
+#cascade-panel{grid-area:cascade;position:relative;overflow:hidden}
+#sidebar{grid-area:sidebar;display:flex;flex-direction:column;gap:8px;overflow:hidden}
+#stats-bar{grid-area:stats;display:grid;grid-template-columns:280px 1fr 1fr 1fr 1fr;gap:8px;min-height:180px;max-height:220px}
+
+/* ═══════════════════════ PANELS (GLASSMORPHISM) ═══════════════════════ */
+.panel{
+  background:var(--glass);
+  backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
+  border:1px solid var(--border);border-radius:var(--radius);
+  box-shadow:0 8px 32px rgba(0,0,0,0.25),inset 0 1px 0 rgba(255,255,255,0.04);
+  overflow:hidden;
+}
+.panel-hero{
+  border:1px solid var(--border2);
+  box-shadow:0 0 40px rgba(0,212,255,0.06),0 8px 32px rgba(0,0,0,0.3);
+}
+.panel-header{
+  padding:10px 14px;font-size:11px;font-weight:600;text-transform:uppercase;
+  letter-spacing:1.5px;color:var(--text2);
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;
+}
+.panel-header .dot{width:6px;height:6px;border-radius:50%;background:var(--green);margin-right:8px;animation:pulse-dot 2s infinite}
+.panel-body{padding:10px 14px;overflow-y:auto;height:calc(100% - 38px)}
+
+/* ═══════════════════════ HEADER ═══════════════════════ */
+.logo{display:flex;align-items:center;gap:10px}
+.logo-text{font-family:var(--mono);font-weight:700;font-size:16px;letter-spacing:2px}
+.logo-text span{color:var(--blue)}
+.logo-sub{font-size:10px;color:var(--text2);letter-spacing:1px;text-transform:uppercase}
+.header-center{display:flex;align-items:center;gap:12px}
+.sport-toggle{display:flex;gap:2px;background:var(--bg2);border-radius:6px;padding:2px;border:1px solid var(--border)}
+.sport-btn{
+  padding:5px 16px;border-radius:4px;border:none;
+  font-family:var(--mono);font-size:11px;font-weight:600;
+  cursor:pointer;transition:all .2s;color:var(--text2);background:transparent;
+}
+.sport-btn.active{background:var(--blue);color:var(--bg)}
+.view-toggle{display:flex;gap:2px;background:var(--bg2);border-radius:6px;padding:2px;border:1px solid var(--border)}
+.view-btn{
+  padding:5px 12px;border-radius:4px;border:none;
+  font-family:var(--mono);font-size:11px;font-weight:600;
+  cursor:pointer;transition:all .2s;color:var(--text2);background:transparent;
+}
+.view-btn.active{background:var(--purple);color:#fff}
+.freshness{
+  display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10px;color:var(--text2);
+  background:var(--glass2);border:1px solid var(--border);border-radius:6px;padding:4px 10px;
+}
+.freshness .dot-live{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.freshness .dot-live.green{background:var(--green);box-shadow:0 0 6px var(--green)}
+.freshness .dot-live.red{background:var(--pink);box-shadow:0 0 6px var(--pink)}
+.header-right{display:flex;align-items:center;gap:16px}
+.header-stats{display:flex;gap:20px;font-family:var(--mono);font-size:12px}
+.header-stat{display:flex;flex-direction:column;align-items:flex-end}
+.header-stat .val{font-size:15px;font-weight:700;color:var(--green)}
+.header-stat .lbl{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:1px}
+
+/* ═══════════════════════ P&L PANEL ═══════════════════════ */
+.pnl-panel{
+  display:flex;align-items:center;gap:3px;font-family:var(--mono);font-size:11px;
+  background:var(--glass2);border:1px solid var(--border);border-radius:6px;padding:4px 10px;
+  flex-wrap:wrap;
+}
+.pnl-item{display:flex;align-items:center;gap:4px;white-space:nowrap}
+.pnl-item .pnl-lbl{color:var(--text3);font-size:9px;text-transform:uppercase;letter-spacing:.5px}
+.pnl-item .pnl-val{font-weight:700;color:var(--text)}
+.pnl-item .pnl-val.positive{color:var(--green)}
+.pnl-item .pnl-val.negative{color:var(--pink)}
+.pnl-sep{color:var(--text3);margin:0 4px;opacity:.4}
+.pnl-updated{font-size:8px;color:var(--text3);margin-left:4px}
+
+/* ═══════════════════════ SCOREBOARD ═══════════════════════ */
+.score-card{
+  flex:0 0 auto;display:flex;align-items:center;gap:12px;
+  background:var(--glass2);border:1px solid var(--border);border-radius:var(--radius-sm);
+  padding:8px 14px;min-width:220px;transition:border-color .3s;
+}
+.score-card:hover{border-color:var(--border2)}
+.score-card.good{border-color:rgba(0,255,136,0.3)}
+.score-card.bad{border-color:rgba(255,51,102,0.3)}
+.score-teams{display:flex;flex-direction:column;gap:2px;font-family:var(--mono);font-size:12px;font-weight:600;min-width:80px}
+.score-teams .team{display:flex;justify-content:space-between;gap:12px}
+.score-teams .pts{color:var(--blue);min-width:24px;text-align:right}
+.score-meta{display:flex;flex-direction:column;align-items:center;font-size:10px;color:var(--text2)}
+.score-meta .qtr{font-weight:600;color:var(--yellow)}
+.score-status{font-size:9px;text-transform:uppercase;letter-spacing:1px;padding:2px 6px;border-radius:3px}
+.score-status.live{background:rgba(255,51,102,0.2);color:var(--pink);animation:pulse-dot 1.5s infinite}
+.score-status.final{background:rgba(0,255,136,0.15);color:var(--green)}
+.score-status.pre{background:rgba(0,212,255,0.15);color:var(--blue)}
+.scoreboard-label{font-family:var(--mono);font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;flex:0 0 auto;writing-mode:vertical-lr;transform:rotate(180deg)}
+
+/* ═══════════════════════ CASCADE GRAPH ═══════════════════════ */
+#cascade-svg{width:100%;height:100%}
+.game-node{cursor:pointer}
+.game-node circle{transition:filter .3s}
+.game-node:hover circle{filter:url(#glow-strong)}
+.game-label{font-family:var(--mono);font-weight:700;fill:var(--bg);pointer-events:none;text-anchor:middle;dominant-baseline:central}
+.leg-node{cursor:pointer;transition:opacity .3s}
+.leg-node:hover circle{filter:url(#glow)}
+.leg-node.busted{opacity:0.25}
+.leg-node.busted circle{fill:#333!important;stroke:#555!important}
+.leg-label{font-family:var(--font);font-size:9px;fill:var(--text2);pointer-events:none;opacity:0;transition:opacity .3s}
+.leg-node:hover+.leg-label,.leg-label.visible{opacity:1}
+.graph-link{stroke-opacity:0.15;transition:stroke-opacity .3s}
+.graph-link.highlighted{stroke-opacity:0.6;stroke-width:2}
+.cascade-arc{fill:none;stroke-width:1.5;opacity:0;pointer-events:none}
+.cascade-arc.active{opacity:0.7;animation:arc-draw .6s ease-out forwards}
+.graph-controls{
+  position:absolute;bottom:12px;left:12px;display:flex;gap:6px;z-index:10;
+}
+.graph-btn{
+  width:32px;height:32px;border-radius:6px;border:1px solid var(--border);
+  background:var(--glass);color:var(--text2);font-size:16px;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;
+  transition:all .2s;font-family:var(--mono);
+}
+.graph-btn:hover{background:var(--blue);color:var(--bg);border-color:var(--blue)}
+.cascade-info{
+  position:absolute;top:12px;left:12px;z-index:10;
+  background:var(--glass);backdrop-filter:blur(16px);
+  border:1px solid var(--border2);border-radius:var(--radius-sm);
+  padding:12px 16px;max-width:320px;display:none;
+}
+.cascade-info.visible{display:block;animation:fade-in .3s}
+.cascade-info h3{font-family:var(--mono);font-size:13px;color:var(--blue);margin-bottom:6px}
+.cascade-info .metric{font-family:var(--mono);font-size:11px;color:var(--text2);margin:3px 0}
+.cascade-info .metric b{color:var(--text)}
+.cascade-info .close-btn{position:absolute;top:6px;right:8px;background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px}
+
+/* ═══════════════════════ TABLE VIEW ═══════════════════════ */
+#table-panel{
+  display:none;position:absolute;top:0;left:0;right:0;bottom:0;
+  background:var(--glass);overflow:auto;z-index:5;border-radius:var(--radius);
+}
+#table-panel.visible{display:block}
+.table-toolbar{
+  display:flex;align-items:center;gap:8px;padding:10px 14px;
+  border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--glass);
+  backdrop-filter:blur(24px);z-index:2;
+}
+.table-search{
+  flex:1;max-width:280px;padding:5px 10px;border:1px solid var(--border);border-radius:6px;
+  background:rgba(0,0,0,0.3);color:var(--text);font-family:var(--mono);font-size:11px;
+  outline:none;transition:border-color .2s;
+}
+.table-search:focus{border-color:var(--blue)}
+.table-search::placeholder{color:var(--text3)}
+.table-count{font-family:var(--mono);font-size:10px;color:var(--text3)}
+#legs-table{width:100%;border-collapse:collapse;font-size:11px}
+#legs-table thead{position:sticky;top:44px;z-index:1}
+#legs-table th{
+  padding:8px 10px;text-align:left;font-family:var(--mono);font-size:10px;font-weight:600;
+  text-transform:uppercase;letter-spacing:1px;color:var(--text3);cursor:pointer;
+  background:var(--bg2);border-bottom:1px solid var(--border);user-select:none;
+  transition:color .2s;white-space:nowrap;
+}
+#legs-table th:hover{color:var(--blue)}
+#legs-table th.sorted-asc::after{content:' ▲';color:var(--blue)}
+#legs-table th.sorted-desc::after{content:' ▼';color:var(--blue)}
+#legs-table td{
+  padding:6px 10px;border-bottom:1px solid rgba(255,255,255,0.03);
+  font-family:var(--mono);font-size:10px;color:var(--text2);cursor:pointer;
+  transition:background .2s;
+}
+#legs-table tr:hover td{background:rgba(0,212,255,0.04)}
+#legs-table tr.top-exposure{border-left:3px solid var(--pink)}
+.type-badge{
+  display:inline-block;padding:2px 6px;border-radius:3px;font-size:9px;font-weight:600;
+  letter-spacing:.5px;
+}
+.type-badge.ML{background:rgba(0,212,255,0.15);color:var(--blue)}
+.type-badge.Spread{background:rgba(123,104,238,0.15);color:var(--purple)}
+.type-badge.Total{background:rgba(255,107,53,0.15);color:var(--orange)}
+.type-badge.Props{background:rgba(0,255,136,0.15);color:var(--green)}
+
+/* ═══════════════════════ SIDEBAR ═══════════════════════ */
+#simulator{flex:1;min-height:0;display:flex;flex-direction:column}
+#simulator .panel-body{flex:1;overflow-y:auto}
+#heatmap-panel{flex:0 0 38%;min-height:0}
+.sim-summary{
+  display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px;
+}
+.sim-card{
+  background:rgba(0,0,0,0.25);border:1px solid var(--border);border-radius:var(--radius-sm);
+  padding:8px 10px;text-align:center;
+}
+.sim-card .val{font-family:var(--mono);font-size:18px;font-weight:700;line-height:1.2}
+.sim-card .lbl{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
+.sim-card.green .val{color:var(--green)}
+.sim-card.pink .val{color:var(--pink)}
+.sim-card.blue .val{color:var(--blue)}
+.sim-card.orange .val{color:var(--orange)}
+.sim-section{margin-bottom:8px}
+.sim-section-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:6px 0;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.05);
+  font-size:11px;font-weight:600;color:var(--text2);
+}
+.sim-section-header:hover{color:var(--text)}
+.sim-section-header .arrow{transition:transform .2s;font-size:10px}
+.sim-section-header .arrow.open{transform:rotate(90deg)}
+.sim-section-body{display:none;padding:4px 0 4px 8px}
+.sim-section-body.open{display:block}
+.sim-leg{
+  display:flex;align-items:center;gap:8px;padding:4px 0;
+  font-size:10px;color:var(--text2);cursor:pointer;transition:color .2s;
+}
+.sim-leg:hover{color:var(--text)}
+.sim-leg.busted{color:var(--text3);text-decoration:line-through}
+.sim-leg .leg-text{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sim-leg .kill-count{font-family:var(--mono);font-size:9px;color:var(--pink);min-width:32px;text-align:right}
+.top-killers{margin-bottom:14px}
+.top-killers h4{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px}
+.killer-item{
+  display:flex;align-items:center;gap:6px;padding:4px 6px;margin-bottom:3px;
+  background:rgba(255,51,102,0.06);border:1px solid rgba(255,51,102,0.1);
+  border-radius:4px;font-size:10px;cursor:pointer;transition:all .2s;
+}
+.killer-item:hover{background:rgba(255,51,102,0.12);border-color:rgba(255,51,102,0.25)}
+.killer-item .rank{font-family:var(--mono);font-weight:700;color:var(--pink);min-width:14px}
+.killer-item .name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2)}
+.killer-item .kills{font-family:var(--mono);color:var(--pink);font-weight:600}
+
+/* Toggle Switch */
+.toggle{
+  position:relative;width:32px;height:18px;border-radius:9px;
+  background:rgba(255,255,255,0.08);cursor:pointer;transition:background .3s;flex:0 0 32px;
+}
+.toggle::after{
+  content:'';position:absolute;top:2px;left:2px;width:14px;height:14px;
+  border-radius:50%;background:#fff;transition:transform .3s,background .3s;
+}
+.toggle.active{background:var(--pink)}
+.toggle.active::after{transform:translateX(14px)}
+.sim-actions{display:flex;gap:6px;margin-bottom:12px}
+.sim-btn{
+  flex:1;padding:6px;border:1px solid var(--border);border-radius:4px;
+  background:transparent;color:var(--text2);font-family:var(--mono);font-size:10px;
+  cursor:pointer;transition:all .2s;text-transform:uppercase;letter-spacing:.5px;
+}
+.sim-btn:hover{background:var(--blue);color:var(--bg);border-color:var(--blue)}
+.sim-btn.danger:hover{background:var(--pink);border-color:var(--pink)}
+
+/* ═══════════════════════ HEATMAP ═══════════════════════ */
+.heatmap-rect{transition:opacity .2s;cursor:pointer}
+.heatmap-rect:hover{opacity:0.85;stroke:#fff;stroke-width:1.5}
+.heatmap-label{font-family:var(--mono);font-size:10px;fill:#fff;pointer-events:none;text-anchor:middle;dominant-baseline:central}
+
+/* ═══════════════════════ STATS ═══════════════════════ */
+.stat-cards{display:grid;grid-template-columns:1fr 1fr;gap:8px;height:100%}
+.stat-card{
+  background:rgba(0,0,0,0.2);border:1px solid var(--border);border-radius:var(--radius-sm);
+  padding:12px;display:flex;flex-direction:column;justify-content:center;align-items:center;
+}
+.stat-card .val{font-family:var(--mono);font-size:22px;font-weight:700;color:var(--blue)}
+.stat-card .lbl{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:4px;text-align:center}
+.chart-container{height:100%;display:flex;align-items:center;justify-content:center}
+
+/* ═══════════════════════ CORRELATION (FIXED) ═══════════════════════ */
+.corr-list{display:flex;flex-direction:column;gap:6px;padding:4px 0;width:100%}
+.corr-pair{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:10px}
+.corr-pair .corr-bar{height:10px;border-radius:3px;min-width:4px;transition:width .3s}
+.corr-pair .corr-label{flex:1;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.corr-pair .corr-count{color:var(--blue);font-weight:600;white-space:nowrap}
+
+/* ═══════════════════════ FILL TIMELINE ═══════════════════════ */
+.timeline-header-info{font-family:var(--mono);font-size:10px;color:var(--text2)}
+
+/* ═══════════════════════ TOOLTIP ═══════════════════════ */
+#tooltip{
+  position:fixed;z-index:1000;pointer-events:none;display:none;
+  background:rgba(10,14,26,0.95);backdrop-filter:blur(16px);
+  border:1px solid var(--border2);border-radius:var(--radius-sm);
+  padding:10px 14px;max-width:300px;
+  box-shadow:0 12px 40px rgba(0,0,0,0.5);
+}
+#tooltip.visible{display:block;animation:fade-in .15s}
+#tooltip h4{font-family:var(--mono);font-size:11px;color:var(--blue);margin-bottom:6px}
+#tooltip p{font-size:10px;color:var(--text2);margin:2px 0;line-height:1.4}
+#tooltip .val{color:var(--text);font-family:var(--mono);font-weight:600}
+
+/* ═══════════════════════ BACKEND OFFLINE ═══════════════════════ */
+.offline-banner{
+  position:fixed;top:0;left:0;right:0;z-index:9999;
+  background:rgba(255,51,102,0.9);color:#fff;font-family:var(--mono);font-size:12px;
+  text-align:center;padding:6px;display:none;
+}
+.offline-banner.visible{display:block}
+
+/* ═══════════════════════ ANIMATIONS ═══════════════════════ */
+@keyframes pulse-dot{0%,100%{opacity:1}50%{opacity:.4}}
+@keyframes fade-in{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+@keyframes arc-draw{from{stroke-dashoffset:500}to{stroke-dashoffset:0}}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+@keyframes glow-pulse{0%,100%{filter:drop-shadow(0 0 4px rgba(0,212,255,0.3))}50%{filter:drop-shadow(0 0 12px rgba(0,212,255,0.6))}}
+@keyframes counter-up{from{opacity:0;transform:scale(0.8)}to{opacity:1;transform:scale(1)}}
+
+/* ═══════════════════════ RESPONSIVE ═══════════════════════ */
+@media(max-width:1200px){
+  #app{grid-template-columns:1fr 320px}
+  #stats-bar{grid-template-columns:280px 1fr 1fr 1fr 1fr}
+}
+@media(max-width:900px){
+  #app{
+    grid-template-columns:1fr;
+    grid-template-rows:auto 56px 400px auto auto;
+    grid-template-areas:"header""scoreboard""cascade""sidebar""stats";
+  }
+  #sidebar{flex-direction:row;overflow-x:auto}
+  #stats-bar{grid-template-columns:1fr 1fr}
+}
+/* ═══════════════════════ PAGE TABS ═══════════════════════ */
+.page-tabs { display:flex; gap:4px; padding:8px 16px 0; background:var(--bg); }
+.page-tab { padding:8px 20px; border-radius:6px 6px 0 0; font-family:var(--mono); font-size:12px; font-weight:600; text-decoration:none; color:var(--text2); background:var(--bg2); border:1px solid var(--border); border-bottom:none; transition:all .2s; }
+.page-tab:hover { color:var(--text); }
+.page-tab.active { background:var(--glass); color:var(--blue); border-color:var(--border2); }
+</style>
+</head>
+<body>
+<div class="offline-banner" id="offline-banner">Backend offline — showing cached/fallback data</div>
+<div class="page-tabs">
+  <a href="/" class="page-tab">Positions</a>
+  <a href="/cascade" class="page-tab active">Cascade Visualizer</a>
+</div>
+<div id="app">
+  <!-- HEADER -->
+  <div id="header">
+    <div class="logo">
+      <div>
+        <div class="logo-text">BILLY<span>BETS</span></div>
+        <div class="logo-sub">Cascade Visualizer</div>
+      </div>
+    </div>
+    <div class="header-center">
+      <div class="sport-toggle">
+        <button class="sport-btn active" data-sport="nba">NBA</button>
+        <button class="sport-btn" data-sport="ncaab">NCAAB</button>
+        <button class="sport-btn" data-sport="soccer">SOCCER</button>
+      </div>
+      <div class="view-toggle">
+        <button class="view-btn active" data-view="graph" onclick="setView('graph')">&#x2B21; Graph</button>
+        <button class="view-btn" data-view="table" onclick="setView('table')">&#x2261; Table</button>
+      </div>
+      <div class="freshness" id="freshness">
+        <span class="dot-live green" id="freshness-dot"></span>
+        <span id="freshness-text">Connecting...</span>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="pnl-panel" id="pnl-panel">
+        <span style="color:var(--text3);font-size:9px">Loading P&amp;L...</span>
+      </div>
+      <div class="header-stats" id="header-stats"></div>
+    </div>
+  </div>
+
+  <!-- SCOREBOARD -->
+  <div id="scoreboard-bar">
+    <div class="scoreboard-label">LIVE</div>
+  </div>
+
+  <!-- CASCADE TREE -->
+  <div id="cascade-panel" class="panel panel-hero">
+    <svg id="cascade-svg"></svg>
+    <div id="table-panel">
+      <div class="table-toolbar">
+        <input type="text" class="table-search" id="table-search" placeholder="Filter legs..." oninput="filterTable()">
+        <span class="table-count" id="table-count"></span>
+      </div>
+      <table id="legs-table">
+        <thead>
+          <tr>
+            <th data-col="shortLabel" onclick="sortTable('shortLabel')">Leg</th>
+            <th data-col="type" onclick="sortTable('type')">Type</th>
+            <th data-col="game" onclick="sortTable('game')">Game</th>
+            <th data-col="side" onclick="sortTable('side')">Side</th>
+            <th data-col="parlayCount" onclick="sortTable('parlayCount')">Parlays</th>
+            <th data-col="totalExposure" onclick="sortTable('totalExposure')">Exposure</th>
+            <th data-col="bustImpact" onclick="sortTable('bustImpact')">Bust Impact</th>
+          </tr>
+        </thead>
+        <tbody id="legs-tbody"></tbody>
+      </table>
+    </div>
+    <div class="cascade-info" id="cascade-info">
+      <button class="close-btn" onclick="closeCascadeInfo()">&times;</button>
+      <h3 id="ci-title"></h3>
+      <div id="ci-body"></div>
+    </div>
+    <div class="graph-controls">
+      <button class="graph-btn" onclick="zoomIn()" title="Zoom In">+</button>
+      <button class="graph-btn" onclick="zoomOut()" title="Zoom Out">&minus;</button>
+      <button class="graph-btn" onclick="zoomReset()" title="Reset">&#8634;</button>
+    </div>
+  </div>
+
+  <!-- SIDEBAR -->
+  <div id="sidebar">
+    <div id="simulator" class="panel">
+      <div class="panel-header"><div style="display:flex;align-items:center"><span class="dot"></span>Scenario Simulator</div></div>
+      <div class="panel-body" id="sim-body"></div>
+    </div>
+    <div id="heatmap-panel" class="panel">
+      <div class="panel-header">Exposure Heatmap</div>
+      <div class="panel-body" id="heatmap-body" style="padding:6px"></div>
+    </div>
+  </div>
+
+  <!-- STATS -->
+  <div id="stats-bar">
+    <div class="panel">
+      <div class="panel-header">Key Metrics</div>
+      <div class="panel-body"><div class="stat-cards" id="stat-cards"></div></div>
+    </div>
+    <div class="panel">
+      <div class="panel-header">Category Breakdown</div>
+      <div class="panel-body"><div class="chart-container" id="donut-chart"></div></div>
+    </div>
+    <div class="panel">
+      <div class="panel-header">Top Cascade Killers</div>
+      <div class="panel-body"><div class="chart-container" id="bar-chart"></div></div>
+    </div>
+    <div class="panel">
+      <div class="panel-header">Leg Correlation</div>
+      <div class="panel-body"><div class="chart-container" id="corr-chart"></div></div>
+    </div>
+    <div class="panel">
+      <div class="panel-header"><span>Fill Timeline</span><span class="timeline-header-info" id="timeline-info">--</span></div>
+      <div class="panel-body"><div class="chart-container" id="timeline-chart"></div></div>
+    </div>
+  </div>
+</div>
+
+<div id="tooltip"></div>
+
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script>
+/* ═══════════════════════════════════════════════════════════════
+   BILLY BETS CASCADE VISUALIZER — Main Application
+   ═══════════════════════════════════════════════════════════════ */
+
+// ============ CONFIG ============
+const API_BASE = '';
+const REFRESH_INTERVAL = 30000;
+
+const C = {
+  colors: {
+    ML:'#00d4ff', Spread:'#7b68ee', Total:'#ff6b35', Props:'#00ff88',
+    game:'#00d4ff', link:'#1a3a5c',
+    exposure: d3.scaleSequential(d3.interpolateYlOrRd).domain([0,1]),
+  },
+  typeOrder: ['ML','Spread','Total','Props'],
+};
+
+// ============ STATE ============
+const S = {
+  sport: 'nba',
+  raw: { nba: null, ncaab: null, soccer: null },
+  data: null,
+  busted: new Set(),
+  selectedLeg: null,
+  simulation: null,
+  zoom: null,
+  svgG: null,
+  view: 'graph', // 'graph' or 'table'
+  tableSortCol: 'totalExposure',
+  tableSortAsc: false,
+  tableFilter: '',
+  lastUpdate: null,
+  balance: null,
+  fillTimeline: null,
+  backendOnline: false,
+  refreshTimer: null,
+};
+
+// ============ UTILITIES ============
+function fmt$(v){ return v >= 1000 ? '$' + (v/1000).toFixed(1) + 'K' : '$' + v.toFixed(0); }
+function fmtPct(v){ return (v*100).toFixed(1) + '%'; }
+function shortGame(g){
+  const parts = g.split('@');
+  return parts.map(t => t.replace(/(Bucks|Thunder|Mavericks|Lakers|Blazers|Jazz|Clippers|Rockets)/i, m => {
+    const map = {bucks:'MIL',thunder:'OKC',mavericks:'DAL',lakers:'LAL',blazers:'POR',jazz:'UTA',clippers:'LAC',rockets:'HOU'};
+    return map[m.toLowerCase()] || m.slice(0,3).toUpperCase();
+  })).join('@');
+}
+
+function parseLeg(raw) {
+  const pipeIdx = raw.lastIndexOf(' | ');
+  const desc = pipeIdx > 0 ? raw.slice(0, pipeIdx) : raw;
+  const key = pipeIdx > 0 ? raw.slice(pipeIdx + 3) : '';
+  const side = raw.startsWith('[YES]') ? 'YES' : 'NO';
+  const gameMatch = desc.match(/\(([^)]+)\)/);
+  const game = gameMatch ? gameMatch[1] : 'Unknown';
+  let type = 'Props';
+  if (/GAME|ML:|Moneyline/i.test(desc) || /GAME/i.test(key)) type = 'ML';
+  else if (/SPREAD|Point Spread/i.test(desc) || /SPREAD/i.test(key)) type = 'Spread';
+  else if (/TOTAL|^.*?(Over|Under)\s+\d+(\.\d+)?\s+pts/i.test(desc) || /TOTAL/i.test(key) || /Total Points/i.test(desc)) type = 'Total';
+  const cleanDesc = desc.replace(/^\[(YES|NO)\]\s*/, '');
+  let shortLabel = cleanDesc.replace(/\s*\([^)]+\)/, '');
+  if (type === 'ML') shortLabel = shortLabel.replace(/^ML:\s*|^Moneyline:\s*/i, '');
+  else if (type === 'Spread') shortLabel = shortLabel.replace(/^Point Spread:\s*/i, '');
+  else if (type === 'Total') shortLabel = shortLabel.replace(/^Total Points:\s*/i, '');
+  if (shortLabel.length > 30) shortLabel = shortLabel.slice(0,28) + '…';
+  return { raw, desc: cleanDesc, key, game, side, type, shortLabel, id: key || raw };
+}
+
+function parseData(rawData) {
+  if (!rawData) return { parlays: [], legs: [], legsMap: new Map(), games: [] };
+  const parlays = [];
+  const legsMap = new Map();
+  const gameSet = new Set();
+  for (const [pid, p] of Object.entries(rawData)) {
+    const legs = p.legs.map(l => {
+      const parsed = parseLeg(l);
+      if (!legsMap.has(parsed.id)) {
+        legsMap.set(parsed.id, { ...parsed, parlayIds: [], totalExposure: 0, parlayCount: 0 });
+      }
+      const legRef = legsMap.get(parsed.id);
+      legRef.parlayIds.push(pid);
+      legRef.totalExposure += p.exposure;
+      legRef.parlayCount += 1;
+      gameSet.add(parsed.game);
+      return parsed.id;
+    });
+    parlays.push({ id: pid, exposure: p.exposure, fills: p.fills, legIds: legs, firstFill: p.first_fill, lastFill: p.last_fill });
+  }
+  const legs = Array.from(legsMap.values());
+  const maxKill = d3.max(legs, l => l.totalExposure) || 1;
+  legs.forEach(l => { l.killNorm = l.totalExposure / maxKill; });
+  const games = Array.from(gameSet).map(g => {
+    const gameLegIds = legs.filter(l => l.game === g).map(l => l.id);
+    const gameParlays = parlays.filter(p => p.legIds.some(lid => gameLegIds.includes(lid)));
+    const totalExp = gameParlays.reduce((s,p) => s + p.exposure, 0);
+    return { name: g, short: shortGame(g), legIds: gameLegIds, totalExposure: totalExp, parlayCount: gameParlays.length };
+  });
+  games.sort((a,b) => b.totalExposure - a.totalExposure);
+  return { parlays, legs, legsMap, games };
+}
+
+// ============ DATA LOADING ============
+async function fetchJSON(url, fallback) {
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    return await resp.json();
+  } catch(e) {
+    console.warn(`Failed to fetch ${url}:`, e.message);
+    return fallback;
+  }
+}
+
+async function loadData() {
+  // Try backend API first
+  const [nba, ncaab, soccer, balance, fillTimeline] = await Promise.all([
+    fetchJSON(`${API_BASE}/api/ops/exposure?sport=nba`, null),
+    fetchJSON(`${API_BASE}/api/ops/exposure?sport=ncaab`, null),
+    fetchJSON(`${API_BASE}/api/ops/exposure?sport=soccer`, null),
+    fetchJSON(`${API_BASE}/api/ops/balance`, null),
+    fetchJSON(`${API_BASE}/api/ops/fills-timeline`, null),
+  ]);
+
+  const anyBackendData = nba || ncaab || soccer || balance;
+  S.backendOnline = !!anyBackendData;
+
+  if (nba) S.raw.nba = nba;
+  if (ncaab) S.raw.ncaab = ncaab;
+  if (soccer) S.raw.soccer = soccer;
+  if (balance) S.balance = balance;
+  if (fillTimeline) S.fillTimeline = fillTimeline;
+
+  // Fallback to local JSON files if backend is down
+  if (!S.raw.nba || !S.raw.ncaab) {
+    try {
+      const [localNba, localNcaab] = await Promise.all([
+        !S.raw.nba ? fetchJSON('nba_exposure.json', null) : Promise.resolve(null),
+        !S.raw.ncaab ? fetchJSON('ncaab_exposure.json', null) : Promise.resolve(null),
+      ]);
+      if (localNba) S.raw.nba = localNba;
+      if (localNcaab) S.raw.ncaab = localNcaab;
+    } catch(e) {
+      console.error('Fallback data load failed:', e);
+    }
+  }
+
+  S.lastUpdate = new Date();
+  updateFreshness();
+  updateOfflineBanner();
+}
+
+async function refreshData() {
+  const savedBusted = new Set(S.busted);
+
+  const [exposure, balance, fillTimeline] = await Promise.all([
+    fetchJSON(`${API_BASE}/api/ops/exposure?sport=${S.sport}`, null),
+    fetchJSON(`${API_BASE}/api/ops/balance`, null),
+    fetchJSON(`${API_BASE}/api/ops/fills-timeline`, null),
+  ]);
+
+  if (exposure) {
+    S.raw[S.sport] = exposure;
+    S.backendOnline = true;
+  }
+  if (balance) S.balance = balance;
+  if (fillTimeline) S.fillTimeline = fillTimeline;
+
+  S.lastUpdate = new Date();
+  updateFreshness();
+  updateOfflineBanner();
+
+  if (exposure) {
+    S.data = parseData(S.raw[S.sport]);
+    // Restore busted state — keep any legIds that still exist
+    S.busted = new Set([...savedBusted].filter(id => S.data.legsMap.has(id)));
+    renderHeaderStats();
+    renderSimulator();
+    updateHeatmap();
+    renderStats();
+    renderPnlPanel();
+    renderFillTimeline();
+    if (S.view === 'table') renderTable();
+  } else {
+    renderPnlPanel();
+    renderFillTimeline();
+  }
+}
+
+function updateOfflineBanner() {
+  const banner = document.getElementById('offline-banner');
+  if (!S.backendOnline) {
+    banner.classList.add('visible');
+  } else {
+    banner.classList.remove('visible');
+  }
+}
+
+// ============ FRESHNESS INDICATOR ============
+function updateFreshness() {
+  const dot = document.getElementById('freshness-dot');
+  const text = document.getElementById('freshness-text');
+  if (!S.lastUpdate) {
+    dot.className = 'dot-live red';
+    text.textContent = 'No data';
+    return;
+  }
+  const ago = Math.floor((Date.now() - S.lastUpdate.getTime()) / 1000);
+  if (ago < 120) {
+    dot.className = 'dot-live green';
+    text.textContent = `Live · Updated ${ago}s ago`;
+  } else {
+    const mins = Math.floor(ago / 60);
+    dot.className = 'dot-live red';
+    text.textContent = `Stale · ${mins}m ago`;
+  }
+}
+
+// Update freshness text every 5 seconds
+setInterval(updateFreshness, 5000);
+
+// ============ P&L PANEL ============
+function renderPnlPanel() {
+  const panel = document.getElementById('pnl-panel');
+  const b = S.balance;
+  if (!b) {
+    panel.innerHTML = '<span style="color:var(--text3);font-size:9px">P&L unavailable</span>';
+    return;
+  }
+
+  const cash = b.cash || 0;
+  const portfolio = b.portfolio || 0;
+  const pnlToday = b.pnl_today || b.pnl || 0;
+  const collateral = b.collateral || b.total_collateral || 0;
+  const fillRate = b.fill_rate || 0;
+  const asOf = b.as_of || null;
+
+  const pnlClass = pnlToday >= 0 ? 'positive' : 'negative';
+  const pnlSign = pnlToday >= 0 ? '+' : '';
+
+  let updatedStr = '';
+  if (asOf) {
+    const asOfDate = new Date(asOf);
+    const minsAgo = Math.floor((Date.now() - asOfDate.getTime()) / 60000);
+    updatedStr = minsAgo < 1 ? 'just now' : `${minsAgo}m ago`;
+  }
+
+  let items = [];
+  if (cash) items.push(`<div class="pnl-item"><span class="pnl-lbl">Cash</span><span class="pnl-val">${fmt$(cash)}</span></div>`);
+  if (portfolio) items.push(`<div class="pnl-item"><span class="pnl-lbl">Portfolio</span><span class="pnl-val">${fmt$(portfolio)}</span></div>`);
+  items.push(`<div class="pnl-item"><span class="pnl-lbl">P&amp;L Today</span><span class="pnl-val ${pnlClass}">${pnlSign}${fmt$(Math.abs(pnlToday))}</span></div>`);
+  if (collateral) items.push(`<div class="pnl-item"><span class="pnl-lbl">Collateral</span><span class="pnl-val">${fmt$(collateral)}</span></div>`);
+  items.push(`<div class="pnl-item"><span class="pnl-lbl">Fill Rate</span><span class="pnl-val">${(fillRate * 100).toFixed(2)}%</span></div>`);
+
+  panel.innerHTML = items.join('<span class="pnl-sep">|</span>') +
+    (updatedStr ? `<span class="pnl-updated">· ${updatedStr}</span>` : '');
+}
+
+// ============ SPORT SWITCHING ============
+function switchSport(sport) {
+  S.sport = sport;
+  S.busted.clear();
+  S.selectedLeg = null;
+  document.querySelectorAll('.sport-btn').forEach(b => b.classList.toggle('active', b.dataset.sport === sport));
+  if (S.raw[sport]) {
+    S.data = parseData(S.raw[sport]);
+    renderAll();
+  } else {
+    // Try to fetch from API
+    fetchJSON(`${API_BASE}/api/ops/exposure?sport=${sport}`, null).then(data => {
+      if (data) {
+        S.raw[sport] = data;
+        S.backendOnline = true;
+      }
+      S.data = parseData(S.raw[sport]);
+      renderAll();
+      updateOfflineBanner();
+    });
+  }
+  fetchScoreboard();
+}
+
+// ============ VIEW TOGGLE ============
+function setView(view) {
+  S.view = view;
+  document.querySelectorAll('.view-btn').forEach(b => b.classList.toggle('active', b.dataset.view === view));
+  const tablePanel = document.getElementById('table-panel');
+  const svgEl = document.getElementById('cascade-svg');
+  const controls = document.querySelector('.graph-controls');
+  if (view === 'table') {
+    tablePanel.classList.add('visible');
+    svgEl.style.display = 'none';
+    controls.style.display = 'none';
+    renderTable();
+  } else {
+    tablePanel.classList.remove('visible');
+    svgEl.style.display = '';
+    controls.style.display = '';
+  }
+}
+
+// ============ TABLE VIEW ============
+function renderTable() {
+  if (!S.data) return;
+  const tbody = document.getElementById('legs-tbody');
+  const countEl = document.getElementById('table-count');
+  let legs = S.data.legs.slice();
+
+  // Compute bust impact for each leg
+  legs.forEach(l => {
+    const parlays = S.data.parlays.filter(p => p.legIds.includes(l.id));
+    l.bustImpact = parlays.length / S.data.parlays.length;
+  });
+
+  // Filter
+  const filter = S.tableFilter.toLowerCase();
+  if (filter) {
+    legs = legs.filter(l =>
+      l.shortLabel.toLowerCase().includes(filter) ||
+      l.type.toLowerCase().includes(filter) ||
+      l.game.toLowerCase().includes(filter) ||
+      l.side.toLowerCase().includes(filter)
+    );
+  }
+
+  // Sort
+  const col = S.tableSortCol;
+  const asc = S.tableSortAsc;
+  legs.sort((a, b) => {
+    let va = a[col], vb = b[col];
+    if (typeof va === 'string') { va = va.toLowerCase(); vb = (vb||'').toLowerCase(); }
+    if (va < vb) return asc ? -1 : 1;
+    if (va > vb) return asc ? 1 : -1;
+    return 0;
+  });
+
+  // Find top 5 by exposure for highlighting
+  const top5Ids = new Set(
+    S.data.legs.slice().sort((a,b) => b.totalExposure - a.totalExposure).slice(0,5).map(l => l.id)
+  );
+
+  // Update sort indicators
+  document.querySelectorAll('#legs-table th').forEach(th => {
+    th.classList.remove('sorted-asc', 'sorted-desc');
+    if (th.dataset.col === col) {
+      th.classList.add(asc ? 'sorted-asc' : 'sorted-desc');
+    }
+  });
+
+  countEl.textContent = `${legs.length} legs`;
+
+  tbody.innerHTML = legs.map(l => `
+    <tr class="${top5Ids.has(l.id) ? 'top-exposure' : ''}" onclick="handleLegClick(S.data.legsMap.get('${l.id.replace(/'/g, "\\'")}'))">
+      <td>${l.shortLabel}</td>
+      <td><span class="type-badge ${l.type}">${l.type}</span></td>
+      <td>${l.game}</td>
+      <td>${l.side}</td>
+      <td>${l.parlayCount}</td>
+      <td>${fmt$(l.totalExposure)}</td>
+      <td>${fmtPct(l.bustImpact)}</td>
+    </tr>
+  `).join('');
+}
+
+function sortTable(col) {
+  if (S.tableSortCol === col) {
+    S.tableSortAsc = !S.tableSortAsc;
+  } else {
+    S.tableSortCol = col;
+    S.tableSortAsc = col === 'shortLabel' || col === 'type' || col === 'game' || col === 'side';
+  }
+  renderTable();
+}
+
+function filterTable() {
+  S.tableFilter = document.getElementById('table-search').value;
+  renderTable();
+}
+
+// ============ HEADER STATS ============
+function renderHeaderStats() {
+  const d = S.data;
+  if (!d) return;
+  const alive = d.parlays.filter(p => !isParlayDead(p));
+  const totalExp = alive.reduce((s,p) => s + p.exposure, 0);
+  document.getElementById('header-stats').innerHTML = `
+    <div class="header-stat"><div class="val">${d.parlays.length}</div><div class="lbl">Parlays</div></div>
+    <div class="header-stat"><div class="val" style="color:var(--pink)">${fmt$(totalExp)}</div><div class="lbl">Exposure</div></div>
+    <div class="header-stat"><div class="val">${d.legs.length}</div><div class="lbl">Unique Legs</div></div>
+    <div class="header-stat"><div class="val">${d.games.length}</div><div class="lbl">Games</div></div>
+  `;
+}
+
+// ============ PARLAY STATUS ============
+function isParlayDead(p) {
+  return p.legIds.some(lid => S.busted.has(lid));
+}
+function getAliveStats() {
+  const all = S.data.parlays;
+  const alive = all.filter(p => !isParlayDead(p));
+  const dead = all.length - alive.length;
+  const totalExp = all.reduce((s,p) => s + p.exposure, 0);
+  const aliveExp = alive.reduce((s,p) => s + p.exposure, 0);
+  const saved = totalExp - aliveExp;
+  return { total: all.length, alive: alive.length, dead, totalExp, aliveExp, saved, pctKilled: dead / all.length, pctSaved: saved / totalExp };
+}
+
+// ============ CASCADE GRAPH ============
+function initGraph() {
+  const svg = d3.select('#cascade-svg');
+  svg.selectAll('*').remove();
+  const rect = document.getElementById('cascade-panel').getBoundingClientRect();
+  const w = rect.width, h = rect.height;
+  svg.attr('viewBox', `0 0 ${w} ${h}`);
+
+  // Defs
+  const defs = svg.append('defs');
+  const glow = defs.append('filter').attr('id','glow').attr('x','-50%').attr('y','-50%').attr('width','200%').attr('height','200%');
+  glow.append('feGaussianBlur').attr('stdDeviation','4').attr('result','blur');
+  glow.append('feMerge').selectAll('feMergeNode').data(['blur','SourceGraphic']).join('feMergeNode').attr('in',d=>d);
+  const glowS = defs.append('filter').attr('id','glow-strong').attr('x','-50%').attr('y','-50%').attr('width','200%').attr('height','200%');
+  glowS.append('feGaussianBlur').attr('stdDeviation','8').attr('result','blur');
+  glowS.append('feMerge').selectAll('feMergeNode').data(['blur','SourceGraphic']).join('feMergeNode').attr('in',d=>d);
+
+  // Game gradients
+  S.data.games.forEach((g,i) => {
+    const colors = [['#00d4ff','#0066cc'],['#ff3366','#aa1144'],['#00ff88','#008844'],['#7b68ee','#4433aa'],['#ff6b35','#cc4400']];
+    const [c1,c2] = colors[i % colors.length];
+    const gr = defs.append('radialGradient').attr('id',`game-grad-${i}`);
+    gr.append('stop').attr('offset','0%').attr('stop-color',c1);
+    gr.append('stop').attr('offset','100%').attr('stop-color',c2);
+  });
+
+  // Zoom
+  const g = svg.append('g').attr('class','graph-root');
+  S.svgG = g;
+  S.zoom = d3.zoom().scaleExtent([0.2, 5]).on('zoom', e => g.attr('transform', e.transform));
+  svg.call(S.zoom);
+  svg.on('dblclick.zoom', null);
+
+  // Build nodes
+  const data = S.data;
+  const nodes = [];
+  const links = [];
+
+  const cx = w/2, cy = h/2;
+  const gameR = Math.min(w,h) * 0.28;
+  data.games.forEach((game, i) => {
+    const angle = (i / data.games.length) * Math.PI * 2 - Math.PI/2;
+    const gx = data.games.length === 1 ? cx : cx + gameR * Math.cos(angle);
+    const gy = data.games.length === 1 ? cy : cy + gameR * Math.sin(angle);
+    const maxExp = d3.max(data.games, g2 => g2.totalExposure) || 1;
+    const r = 24 + (game.totalExposure / maxExp) * 20;
+    nodes.push({ id: 'game-' + game.name, type: 'game', game, x: gx, y: gy, fx: gx, fy: gy, r, idx: i });
+  });
+
+  const maxKill = d3.max(data.legs, l => l.totalExposure) || 1;
+  data.legs.forEach(leg => {
+    const r = 5 + (leg.totalExposure / maxKill) * 15;
+    nodes.push({ id: 'leg-' + leg.id, type: 'leg', leg, r });
+    links.push({ source: 'game-' + leg.game, target: 'leg-' + leg.id });
+  });
+
+  const sim = d3.forceSimulation(nodes)
+    .force('link', d3.forceLink(links).id(d=>d.id).distance(d => {
+      const gameNode = nodes.find(n => n.id === (typeof d.source === 'object' ? d.source.id : d.source));
+      return gameNode ? gameNode.r + 50 + Math.random() * 40 : 80;
+    }).strength(0.8))
+    .force('charge', d3.forceManyBody().strength(d => d.type === 'game' ? -300 : -30))
+    .force('center', d3.forceCenter(cx, cy).strength(0.05))
+    .force('collide', d3.forceCollide(d => d.r + 3))
+    .force('x', d3.forceX(cx).strength(0.02))
+    .force('y', d3.forceY(cy).strength(0.02))
+    .alphaDecay(0.02)
+    .velocityDecay(0.3);
+
+  S.simulation = sim;
+
+  const linkG = g.append('g').attr('class','links');
+  const linkSel = linkG.selectAll('line').data(links).join('line')
+    .attr('class','graph-link')
+    .attr('stroke', d => {
+      const tgt = typeof d.target === 'object' ? d.target : nodes.find(n=>n.id===d.target);
+      if (tgt && tgt.leg) return C.colors[tgt.leg.type] || '#1a3a5c';
+      return '#1a3a5c';
+    })
+    .attr('stroke-width', 1);
+
+  g.append('g').attr('class','cascade-arcs');
+
+  const gameNodes = g.selectAll('.game-node')
+    .data(nodes.filter(n=>n.type==='game')).join('g').attr('class','game-node');
+  gameNodes.append('circle')
+    .attr('r', d => d.r)
+    .attr('fill', d => `url(#game-grad-${d.idx})`)
+    .attr('stroke','rgba(255,255,255,0.15)').attr('stroke-width',1.5)
+    .attr('filter','url(#glow)');
+  gameNodes.append('text').attr('class','game-label')
+    .attr('font-size', d => Math.max(8, d.r * 0.45))
+    .text(d => d.game.short || d.game.name.split('@').map(t=>t.slice(0,3).toUpperCase()).join('@'));
+  gameNodes.on('click', (e, d) => handleGameClick(d.game));
+
+  const legNodes = g.selectAll('.leg-node')
+    .data(nodes.filter(n=>n.type==='leg')).join('g')
+    .attr('class', d => 'leg-node' + (S.busted.has(d.leg.id) ? ' busted' : ''))
+    .attr('data-legid', d => d.leg.id);
+  legNodes.append('circle')
+    .attr('r', d => d.r)
+    .attr('fill', d => S.busted.has(d.leg.id) ? '#333' : C.colors[d.leg.type])
+    .attr('stroke', d => {
+      if (S.busted.has(d.leg.id)) return '#555';
+      const norm = d.leg.killNorm;
+      return d3.interpolateRgb('#224', '#ff3366')(norm);
+    })
+    .attr('stroke-width', d => 1 + d.leg.killNorm * 2)
+    .attr('opacity', 0.85);
+
+  const topLegs = data.legs.slice().sort((a,b) => b.totalExposure - a.totalExposure).slice(0, 15);
+  const topIds = new Set(topLegs.map(l => l.id));
+  g.selectAll('.leg-label')
+    .data(nodes.filter(n => n.type==='leg' && topIds.has(n.leg.id))).join('text')
+    .attr('class','leg-label visible')
+    .attr('font-size',8)
+    .text(d => d.leg.shortLabel);
+
+  legNodes.on('mouseover', (e, d) => showTooltip(e, d.leg))
+    .on('mouseout', hideTooltip)
+    .on('click', (e, d) => handleLegClick(d.leg));
+
+  legNodes.call(d3.drag()
+    .on('start', (e,d) => { if(!e.active) sim.alphaTarget(0.1).restart(); d.fx=d.x; d.fy=d.y; })
+    .on('drag', (e,d) => { d.fx=e.x; d.fy=e.y; })
+    .on('end', (e,d) => { if(!e.active) sim.alphaTarget(0); d.fx=null; d.fy=null; })
+  );
+
+  sim.on('tick', () => {
+    linkSel.attr('x1',d=>d.source.x).attr('y1',d=>d.source.y).attr('x2',d=>d.target.x).attr('y2',d=>d.target.y);
+    gameNodes.attr('transform', d=>`translate(${d.x},${d.y})`);
+    legNodes.attr('transform', d=>`translate(${d.x},${d.y})`);
+    g.selectAll('.leg-label')
+      .attr('x', d=>d.x + d.r + 4).attr('y', d=>d.y + 3);
+  });
+}
+
+function handleLegClick(leg) {
+  if (!leg) return;
+  S.selectedLeg = leg;
+  const data = S.data;
+  const parlays = data.parlays.filter(p => p.legIds.includes(leg.id));
+  const aliveP = parlays.filter(p => !isParlayDead(p));
+  const exposure = aliveP.reduce((s,p) => s + p.exposure, 0);
+
+  d3.selectAll('.leg-node circle').attr('opacity', 0.25);
+  d3.selectAll('.graph-link').attr('stroke-opacity', 0.05);
+  const connectedLegIds = new Set();
+  parlays.forEach(p => p.legIds.forEach(lid => connectedLegIds.add(lid)));
+  connectedLegIds.forEach(lid => {
+    d3.select(`.leg-node[data-legid="${CSS.escape(lid)}"] circle`).attr('opacity', 1);
+  });
+  d3.selectAll('.graph-link').attr('stroke-opacity', d => {
+    const tgt = typeof d.target === 'object' ? d.target : null;
+    if (tgt && tgt.leg && connectedLegIds.has(tgt.leg.id)) return 0.5;
+    return 0.05;
+  });
+  d3.select(`.leg-node[data-legid="${CSS.escape(leg.id)}"] circle`).attr('filter','url(#glow-strong)').attr('opacity',1);
+
+  const arcG = d3.select('.cascade-arcs');
+  arcG.selectAll('*').remove();
+  const nodes = S.simulation ? S.simulation.nodes() : [];
+  const srcNode = nodes.find(n => n.type==='leg' && n.leg.id === leg.id);
+  if (!srcNode) return;
+  const otherIds = [...connectedLegIds].filter(id => id !== leg.id);
+  otherIds.forEach((lid, i) => {
+    const tgt = nodes.find(n => n.type==='leg' && n.leg.id === lid);
+    if (!tgt) return;
+    const mx = (srcNode.x + tgt.x)/2, my = (srcNode.y + tgt.y)/2;
+    const dx = tgt.x - srcNode.x, dy = tgt.y - srcNode.y;
+    const dist = Math.sqrt(dx*dx+dy*dy);
+    const off = Math.min(dist * 0.3, 50);
+    const cx2 = mx + (-dy/dist)*off, cy2 = my + (dx/dist)*off;
+    arcG.append('path')
+      .attr('class','cascade-arc active')
+      .attr('d',`M${srcNode.x},${srcNode.y} Q${cx2},${cy2} ${tgt.x},${tgt.y}`)
+      .attr('stroke', C.colors[leg.type])
+      .attr('stroke-dasharray','500')
+      .attr('stroke-dashoffset','500')
+      .style('animation-delay', (i*30)+'ms');
+  });
+
+  const info = document.getElementById('cascade-info');
+  const ci = document.getElementById('ci-title');
+  const cb = document.getElementById('ci-body');
+  ci.textContent = leg.shortLabel;
+  cb.innerHTML = `
+    <div class="metric"><b>Type:</b> ${leg.type} | <b>Side:</b> ${leg.side}</div>
+    <div class="metric"><b>Game:</b> ${leg.game}</div>
+    <div class="metric"><b>In ${parlays.length} parlays</b> (${aliveP.length} alive)</div>
+    <div class="metric"><b>Cascade Kill:</b> <span style="color:var(--pink)">${fmt$(exposure)}</span></div>
+    <div class="metric"><b>If busted:</b> wipes ${fmtPct(parlays.length / data.parlays.length)} of book</div>
+  `;
+  info.classList.add('visible');
+}
+
+function handleGameClick(game) {
+  clearSelection();
+  const legIds = new Set(game.legIds);
+  d3.selectAll('.leg-node circle').attr('opacity', d => legIds.has(d.leg.id) ? 1 : 0.15);
+  d3.selectAll('.graph-link').attr('stroke-opacity', d => {
+    const tgt = typeof d.target === 'object' ? d.target : null;
+    if (tgt && tgt.leg && legIds.has(tgt.leg.id)) return 0.5;
+    return 0.03;
+  });
+}
+
+function clearSelection() {
+  S.selectedLeg = null;
+  d3.selectAll('.leg-node circle')
+    .attr('opacity', d => S.busted.has(d.leg.id) ? 0.25 : 0.85)
+    .attr('filter', null);
+  d3.selectAll('.graph-link').attr('stroke-opacity', 0.15);
+  d3.select('.cascade-arcs').selectAll('*').remove();
+  document.getElementById('cascade-info').classList.remove('visible');
+}
+
+function closeCascadeInfo() {
+  clearSelection();
+}
+
+function updateGraphBusted() {
+  d3.selectAll('.leg-node')
+    .classed('busted', d => S.busted.has(d.leg.id))
+    .select('circle')
+    .transition().duration(400)
+    .attr('fill', d => S.busted.has(d.leg.id) ? '#333' : C.colors[d.leg.type])
+    .attr('stroke', d => S.busted.has(d.leg.id) ? '#555' : d3.interpolateRgb('#224', '#ff3366')(d.leg.killNorm))
+    .attr('opacity', d => S.busted.has(d.leg.id) ? 0.25 : 0.85);
+  d3.selectAll('.graph-link')
+    .transition().duration(400)
+    .attr('stroke-opacity', d => {
+      const tgt = typeof d.target === 'object' ? d.target : null;
+      if (tgt && tgt.leg && S.busted.has(tgt.leg.id)) return 0.03;
+      return 0.15;
+    });
+}
+
+function zoomIn() { d3.select('#cascade-svg').transition().duration(300).call(S.zoom.scaleBy, 1.4); }
+function zoomOut() { d3.select('#cascade-svg').transition().duration(300).call(S.zoom.scaleBy, 0.7); }
+function zoomReset() { d3.select('#cascade-svg').transition().duration(500).call(S.zoom.transform, d3.zoomIdentity); }
+
+// ============ TOOLTIP ============
+function showTooltip(e, leg) {
+  const tt = document.getElementById('tooltip');
+  const parlays = S.data.parlays.filter(p => p.legIds.includes(leg.id));
+  const alive = parlays.filter(p => !isParlayDead(p));
+  const exp = alive.reduce((s,p) => s + p.exposure, 0);
+  tt.innerHTML = `
+    <h4>${leg.shortLabel}</h4>
+    <p><span class="val">${leg.type}</span> · ${leg.side} · ${leg.game}</p>
+    <p>Parlays: <span class="val">${parlays.length}</span> (${alive.length} alive)</p>
+    <p>Cascade Kill: <span class="val" style="color:var(--pink)">${fmt$(exp)}</span></p>
+  `;
+  tt.style.left = (e.clientX + 14) + 'px';
+  tt.style.top = (e.clientY - 10) + 'px';
+  tt.classList.add('visible');
+}
+function hideTooltip() { document.getElementById('tooltip').classList.remove('visible'); }
+
+// ============ SCOREBOARD ============
+async function fetchScoreboard() {
+  const bar = document.getElementById('scoreboard-bar');
+  try {
+    const today = new Date();
+    const dateStr = today.getFullYear() + String(today.getMonth()+1).padStart(2,'0') + String(today.getDate()).padStart(2,'0');
+
+    if (S.sport === 'soccer') {
+      // Fetch all three soccer leagues
+      const leagues = [
+        { path: 'soccer/esp.1', label: 'La Liga' },
+        { path: 'soccer/ita.1', label: 'Serie A' },
+        { path: 'soccer/eng.1', label: 'EPL' },
+      ];
+      const results = await Promise.all(
+        leagues.map(l =>
+          fetch(`https://site.api.espn.com/apis/site/v2/sports/${l.path}/scoreboard?dates=${dateStr}`)
+            .then(r => r.json()).catch(() => ({ events: [] }))
+        )
+      );
+      let allEvents = [];
+      results.forEach((data, idx) => {
+        if (data.events) {
+          data.events.forEach(ev => { ev._league = leagues[idx].label; });
+          allEvents = allEvents.concat(data.events);
+        }
+      });
+      if (!allEvents.length) {
+        bar.innerHTML = `<div class="scoreboard-label">SOCCER</div><div class="score-card"><div style="font-size:11px;color:var(--text3)">No soccer matches today</div></div>`;
+        return;
+      }
+      let html = `<div class="scoreboard-label">SOCCER</div>`;
+      allEvents.forEach(ev => {
+        const comp = ev.competitions[0];
+        const away = comp.competitors.find(c => c.homeAway === 'away');
+        const home = comp.competitors.find(c => c.homeAway === 'home');
+        const status = comp.status;
+        const state = status.type.state;
+        let statusClass = state === 'in' ? 'live' : state === 'post' ? 'final' : 'pre';
+        let statusText = state === 'in' ? status.type.shortDetail : state === 'post' ? 'FINAL' : status.type.shortDetail;
+        html += `
+          <div class="score-card">
+            <div class="score-teams">
+              <div class="team"><span>${away?.team?.abbreviation || away?.team?.shortDisplayName || '?'}</span><span class="pts">${away?.score || '-'}</span></div>
+              <div class="team"><span>${home?.team?.abbreviation || home?.team?.shortDisplayName || '?'}</span><span class="pts">${home?.score || '-'}</span></div>
+            </div>
+            <div class="score-meta">
+              <span style="font-size:8px;color:var(--text3)">${ev._league}</span>
+              <span class="score-status ${statusClass}">${statusText}</span>
+            </div>
+          </div>`;
+      });
+      bar.innerHTML = html;
+      return;
+    }
+
+    // NBA / NCAAB
+    const sportPath = S.sport === 'ncaab'
+      ? 'basketball/mens-college-basketball'
+      : 'basketball/nba';
+    const resp = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${sportPath}/scoreboard?dates=${dateStr}`);
+    const data = await resp.json();
+    const sportLabel = S.sport === 'ncaab' ? 'NCAAB' : 'NBA';
+    if (!data.events || !data.events.length) {
+      bar.innerHTML = `<div class="scoreboard-label">${sportLabel}</div><div class="score-card"><div style="font-size:11px;color:var(--text3)">No ${sportLabel} games scheduled today</div></div>`;
+      return;
+    }
+    const bettorTeams = new Set();
+    if (S.data) {
+      S.data.legs.filter(l => l.type === 'ML').forEach(l => {
+        const team = l.shortLabel.trim();
+        bettorTeams.add(team.toLowerCase());
+      });
+    }
+    let html = `<div class="scoreboard-label">${sportLabel}</div>`;
+    data.events.forEach(ev => {
+      const comp = ev.competitions[0];
+      const away = comp.competitors.find(c => c.homeAway === 'away');
+      const home = comp.competitors.find(c => c.homeAway === 'home');
+      const status = comp.status;
+      const state = status.type.state;
+      let statusClass = state === 'in' ? 'live' : state === 'post' ? 'final' : 'pre';
+      let statusText = state === 'in' ? status.type.shortDetail : state === 'post' ? 'FINAL' : status.type.shortDetail;
+      let cardClass = '';
+      if (state !== 'pre' && away && home) {
+        const awayScore = parseInt(away.score || '0');
+        const homeScore = parseInt(home.score || '0');
+        const awayName = away.team.shortDisplayName?.toLowerCase() || '';
+        const homeName = home.team.shortDisplayName?.toLowerCase() || '';
+        const awayBacked = bettorTeams.has(awayName) || bettorTeams.has(away.team.displayName?.toLowerCase() || '');
+        const homeBacked = bettorTeams.has(homeName) || bettorTeams.has(home.team.displayName?.toLowerCase() || '');
+        if ((awayBacked && awayScore < homeScore) || (homeBacked && homeScore < awayScore)) cardClass = 'good';
+        else if ((awayBacked && awayScore > homeScore) || (homeBacked && homeScore > awayScore)) cardClass = 'bad';
+      }
+      html += `
+        <div class="score-card ${cardClass}">
+          <div class="score-teams">
+            <div class="team"><span>${away?.team?.abbreviation || '?'}</span><span class="pts">${away?.score || '-'}</span></div>
+            <div class="team"><span>${home?.team?.abbreviation || '?'}</span><span class="pts">${home?.score || '-'}</span></div>
+          </div>
+          <div class="score-meta">
+            <span class="score-status ${statusClass}">${statusText}</span>
+          </div>
+        </div>`;
+    });
+    bar.innerHTML = html;
+  } catch(e) {
+    const sportLabel = S.sport === 'soccer' ? 'SOCCER' : S.sport === 'ncaab' ? 'NCAAB' : 'NBA';
+    bar.innerHTML = `<div class="scoreboard-label">${sportLabel}</div>
+      <div class="score-card"><div style="font-size:11px;color:var(--text3)">Scoreboard unavailable</div></div>`;
+    if (S.data) {
+      S.data.games.forEach(g => {
+        const teams = g.name.split('@');
+        bar.innerHTML += `<div class="score-card">
+          <div class="score-teams">
+            <div class="team"><span>${teams[0].slice(0,3).toUpperCase()}</span><span class="pts">-</span></div>
+            <div class="team"><span>${(teams[1]||'').slice(0,3).toUpperCase()}</span><span class="pts">-</span></div>
+          </div>
+          <div class="score-meta"><span class="score-status pre">TBD</span></div>
+        </div>`;
+      });
+    }
+  }
+}
+
+// ============ SCENARIO SIMULATOR ============
+function renderSimulator() {
+  const body = document.getElementById('sim-body');
+  if (!S.data) { body.innerHTML = '<div style="color:var(--text3);text-align:center;padding:20px">No data</div>'; return; }
+  const stats = getAliveStats();
+  const data = S.data;
+
+  const sortedLegs = data.legs.slice().sort((a,b) => b.totalExposure - a.totalExposure);
+  const topKillers = sortedLegs.slice(0, 5);
+
+  const grouped = {};
+  data.games.forEach(g => {
+    grouped[g.name] = {};
+    C.typeOrder.forEach(t => { grouped[g.name][t] = []; });
+  });
+  data.legs.forEach(l => {
+    if (grouped[l.game] && grouped[l.game][l.type]) {
+      grouped[l.game][l.type].push(l);
+    } else if (grouped[l.game]) {
+      if (!grouped[l.game]['Other']) grouped[l.game]['Other'] = [];
+      grouped[l.game]['Other'].push(l);
+    }
+  });
+
+  let html = `
+    <div class="sim-summary">
+      <div class="sim-card pink"><div class="val" id="sim-dead">${stats.dead}</div><div class="lbl">Parlays Killed</div></div>
+      <div class="sim-card green"><div class="val" id="sim-saved">${fmt$(stats.saved)}</div><div class="lbl">Exposure Saved</div></div>
+      <div class="sim-card blue"><div class="val" id="sim-alive">${stats.alive}</div><div class="lbl">Parlays Alive</div></div>
+      <div class="sim-card orange"><div class="val" id="sim-pct">${fmtPct(stats.pctKilled)}</div><div class="lbl">Book Wiped</div></div>
+    </div>
+    <div class="sim-actions">
+      <button class="sim-btn" onclick="resetBusts()">Reset All</button>
+      <button class="sim-btn danger" onclick="bustTopKillers()">Bust Top 5</button>
+    </div>
+    <div class="top-killers">
+      <h4>Top Cascade Killers</h4>
+      ${topKillers.map((l,i) => `
+        <div class="killer-item" onclick="toggleBust('${l.id.replace(/'/g,"\\'")}'); focusLeg('${l.id.replace(/'/g,"\\'")}');">
+          <div class="rank">#${i+1}</div>
+          <div class="name">${l.shortLabel}</div>
+          <div class="kills">${l.parlayCount}p · ${fmt$(l.totalExposure)}</div>
+        </div>`).join('')}
+    </div>
+  `;
+
+  for (const game of data.games) {
+    const gameLegIds = data.legs.filter(l => l.game === game.name).map(l => l.id);
+    const gameExp = data.parlays.filter(p => p.legIds.some(lid => gameLegIds.includes(lid))).reduce((s,p) => s + p.exposure, 0);
+    const shortName = game.short || game.name;
+    const escapedName = game.name.replace(/'/g, "\\'");
+    html += `<div class="sim-section">
+      <div class="sim-section-header" onclick="toggleSection(this)">
+        <span><span class="arrow">&#9654;</span> ${shortName} <span style="color:var(--text3);font-weight:400;font-size:10px">${fmt$(gameExp)}</span></span>
+        <button class="sim-btn danger" style="flex:0;padding:3px 8px;font-size:9px" onclick="event.stopPropagation();bustGame('${escapedName}')">BUST ALL</button>
+      </div>
+      <div class="sim-section-body">`;
+
+    for (const type of C.typeOrder) {
+      const legs = grouped[game.name][type];
+      if (!legs || !legs.length) continue;
+      legs.sort((a,b) => b.totalExposure - a.totalExposure);
+      html += `<div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin:6px 0 3px;padding-left:4px">${type}</div>`;
+      legs.forEach(l => {
+        const busted = S.busted.has(l.id);
+        const escapedId = l.id.replace(/'/g, "\\'");
+        html += `<div class="sim-leg${busted?' busted':''}" data-legid="${l.id}">
+          <div class="toggle${busted?' active':''}" onclick="event.stopPropagation();toggleBust('${escapedId}')"></div>
+          <div class="leg-text" onclick="focusLeg('${escapedId}')">[${l.side}] ${l.shortLabel}</div>
+          <div class="kill-count">${l.parlayCount}p</div>
+        </div>`;
+      });
+    }
+    html += '</div></div>';
+  }
+
+  body.innerHTML = html;
+}
+
+function toggleSection(el) {
+  const body = el.nextElementSibling;
+  const arrow = el.querySelector('.arrow');
+  body.classList.toggle('open');
+  arrow.classList.toggle('open');
+}
+
+function toggleBust(legId) {
+  if (S.busted.has(legId)) S.busted.delete(legId);
+  else S.busted.add(legId);
+  updateAfterBust();
+}
+
+function bustGame(gameName) {
+  S.data.legs.filter(l => l.game === gameName).forEach(l => S.busted.add(l.id));
+  updateAfterBust();
+}
+
+function bustTopKillers() {
+  const sorted = S.data.legs.slice().sort((a,b) => b.totalExposure - a.totalExposure);
+  sorted.slice(0,5).forEach(l => S.busted.add(l.id));
+  updateAfterBust();
+}
+
+function resetBusts() {
+  S.busted.clear();
+  updateAfterBust();
+}
+
+function updateAfterBust() {
+  renderSimulator();
+  updateGraphBusted();
+  renderHeaderStats();
+  updateHeatmap();
+  renderStats();
+  if (S.view === 'table') renderTable();
+}
+
+function focusLeg(legId) {
+  const leg = S.data.legsMap.get(legId);
+  if (leg) handleLegClick(leg);
+}
+
+// ============ EXPOSURE HEATMAP ============
+function renderHeatmap() {
+  const container = document.getElementById('heatmap-body');
+  container.innerHTML = '';
+  if (!S.data) return;
+  const rect = container.getBoundingClientRect();
+  const w = rect.width || 340, h = rect.height || 200;
+  const svg = d3.select('#heatmap-body').append('svg').attr('width', w).attr('height', h);
+
+  const data = S.data;
+  const hierarchy = {
+    name: 'root',
+    children: data.games.map(g => ({
+      name: g.short || g.name,
+      children: C.typeOrder.map(type => {
+        const legs = data.legs.filter(l => l.game === g.name && l.type === type);
+        if (!legs.length) return null;
+        return {
+          name: type,
+          children: legs.map(l => {
+            const alive = data.parlays.filter(p => p.legIds.includes(l.id) && !isParlayDead(p));
+            const exp = alive.reduce((s,p) => s + p.exposure, 0);
+            return { name: l.shortLabel, value: Math.max(exp, 1), leg: l, type };
+          })
+        };
+      }).filter(Boolean)
+    }))
+  };
+
+  const root = d3.hierarchy(hierarchy).sum(d => d.value || 0).sort((a,b) => b.value - a.value);
+  d3.treemap().size([w, h]).paddingInner(2).paddingOuter(3).round(true)(root);
+
+  const maxVal = d3.max(root.leaves(), d => d.value) || 1;
+  const colorScale = d3.scaleSequential(d3.interpolateYlOrRd).domain([0, maxVal]);
+
+  const cell = svg.selectAll('g').data(root.leaves()).join('g')
+    .attr('transform', d => `translate(${d.x0},${d.y0})`);
+  cell.append('rect')
+    .attr('class','heatmap-rect')
+    .attr('width', d => Math.max(0, d.x1 - d.x0))
+    .attr('height', d => Math.max(0, d.y1 - d.y0))
+    .attr('fill', d => {
+      if (d.data.leg && S.busted.has(d.data.leg.id)) return '#222';
+      return colorScale(d.value);
+    })
+    .attr('rx', 2)
+    .on('mouseover', (e, d) => { if (d.data.leg) showTooltip(e, d.data.leg); })
+    .on('mouseout', hideTooltip)
+    .on('click', (e, d) => { if (d.data.leg) handleLegClick(d.data.leg); });
+  cell.append('text')
+    .attr('class','heatmap-label')
+    .attr('x', d => (d.x1 - d.x0)/2)
+    .attr('y', d => (d.y1 - d.y0)/2)
+    .text(d => {
+      const w2 = d.x1 - d.x0, h2 = d.y1 - d.y0;
+      if (w2 < 30 || h2 < 14) return '';
+      const label = d.data.name || '';
+      return label.length > w2/6 ? label.slice(0, Math.floor(w2/6)) + '…' : label;
+    })
+    .attr('font-size', d => { const s = Math.min(d.x1-d.x0, d.y1-d.y0); return Math.max(7, Math.min(10, s*0.25)); });
+}
+
+function updateHeatmap() { renderHeatmap(); }
+
+// ============ STATS DASHBOARD ============
+function renderStats() {
+  if (!S.data) return;
+  const data = S.data;
+  const stats = getAliveStats();
+  const alive = data.parlays.filter(p => !isParlayDead(p));
+
+  const avgExp = stats.aliveExp / (stats.alive || 1);
+  const avgLegs = alive.length ? (alive.reduce((s,p) => s + p.legIds.length, 0) / alive.length) : 0;
+  document.getElementById('stat-cards').innerHTML = `
+    <div class="stat-card"><div class="val">${data.parlays.length}</div><div class="lbl">Total Parlays</div></div>
+    <div class="stat-card"><div class="val" style="color:var(--pink)">${fmt$(stats.totalExp)}</div><div class="lbl">Total Exposure</div></div>
+    <div class="stat-card"><div class="val" style="color:var(--green)">${fmt$(stats.saved)}</div><div class="lbl">Saved</div></div>
+    <div class="stat-card"><div class="val">${avgLegs.toFixed(1)}</div><div class="lbl">Avg Legs/Parlay</div></div>
+  `;
+
+  renderDonut();
+  renderBarChart();
+  renderCorrelation();
+  renderFillTimeline();
+}
+
+function renderDonut() {
+  const container = document.getElementById('donut-chart');
+  container.innerHTML = '';
+  const rect = container.getBoundingClientRect();
+  const size = Math.min(rect.width, rect.height) || 160;
+  const radius = size / 2 - 10;
+  const svg = d3.select('#donut-chart').append('svg').attr('width', size).attr('height', size);
+  const g = svg.append('g').attr('transform', `translate(${size/2},${size/2})`);
+
+  const counts = {};
+  C.typeOrder.forEach(t => { counts[t] = 0; });
+  S.data.legs.forEach(l => { counts[l.type] = (counts[l.type] || 0) + 1; });
+  const pieData = C.typeOrder.filter(t => counts[t] > 0).map(t => ({ type: t, count: counts[t] }));
+  const pie = d3.pie().value(d => d.count).sort(null).padAngle(0.03);
+  const arc = d3.arc().innerRadius(radius * 0.55).outerRadius(radius);
+  const arcHover = d3.arc().innerRadius(radius * 0.55).outerRadius(radius + 4);
+
+  g.selectAll('path').data(pie(pieData)).join('path')
+    .attr('d', arc)
+    .attr('fill', d => C.colors[d.data.type])
+    .attr('opacity', 0.85)
+    .attr('stroke', 'var(--bg)').attr('stroke-width', 1)
+    .on('mouseover', function(e, d) {
+      d3.select(this).transition().duration(200).attr('d', arcHover).attr('opacity',1);
+    })
+    .on('mouseout', function(e, d) {
+      d3.select(this).transition().duration(200).attr('d', arc).attr('opacity',0.85);
+    });
+
+  g.append('text').attr('text-anchor','middle').attr('dy','-4')
+    .attr('fill','var(--text)').attr('font-family','var(--mono)').attr('font-size',16).attr('font-weight','700')
+    .text(S.data.legs.length);
+  g.append('text').attr('text-anchor','middle').attr('dy','12')
+    .attr('fill','var(--text3)').attr('font-family','var(--font)').attr('font-size',9)
+    .text('LEGS');
+
+  const legend = svg.append('g').attr('transform', `translate(${size - 4}, 10)`);
+  pieData.forEach((d, i) => {
+    const lg = legend.append('g').attr('transform', `translate(0, ${i * 14})`);
+    lg.append('rect').attr('x', -50).attr('width', 8).attr('height', 8).attr('rx', 2).attr('fill', C.colors[d.type]);
+    lg.append('text').attr('x', -38).attr('y', 8).attr('fill','var(--text3)').attr('font-size',8)
+      .attr('font-family','var(--mono)').text(`${d.type} (${d.count})`);
+  });
+}
+
+function renderBarChart() {
+  const container = document.getElementById('bar-chart');
+  container.innerHTML = '';
+  const rect = container.getBoundingClientRect();
+  const w = rect.width || 280, h = rect.height || 160;
+  const margin = { top: 5, right: 50, bottom: 5, left: 5 };
+  const iw = w - margin.left - margin.right, ih = h - margin.top - margin.bottom;
+
+  const sorted = S.data.legs.slice().sort((a,b) => b.totalExposure - a.totalExposure).slice(0, 10);
+  const svg = d3.select('#bar-chart').append('svg').attr('width', w).attr('height', h);
+  const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+
+  const x = d3.scaleLinear().domain([0, d3.max(sorted, d=>d.totalExposure) || 1]).range([0, iw]);
+  const y = d3.scaleBand().domain(sorted.map(d=>d.id)).range([0, ih]).padding(0.25);
+
+  g.selectAll('rect').data(sorted).join('rect')
+    .attr('x', 0).attr('y', d=>y(d.id))
+    .attr('width', d=>x(d.totalExposure)).attr('height', y.bandwidth())
+    .attr('fill', d => C.colors[d.type]).attr('opacity', 0.8).attr('rx', 3)
+    .on('mouseover', (e, d) => showTooltip(e, d))
+    .on('mouseout', hideTooltip)
+    .on('click', (e, d) => handleLegClick(d));
+
+  g.selectAll('.bar-label').data(sorted).join('text')
+    .attr('class','bar-label')
+    .attr('x', 4).attr('y', d => y(d.id) + y.bandwidth()/2 + 3)
+    .attr('fill','var(--text)').attr('font-size', 8).attr('font-family','var(--mono)')
+    .text(d => {
+      const maxChars = Math.floor(x(d.totalExposure) / 5);
+      const label = d.shortLabel;
+      return maxChars > 3 ? (label.length > maxChars ? label.slice(0, maxChars-1) + '…' : label) : '';
+    });
+
+  g.selectAll('.bar-val').data(sorted).join('text')
+    .attr('class','bar-val')
+    .attr('x', d => x(d.totalExposure) + 4).attr('y', d => y(d.id) + y.bandwidth()/2 + 3)
+    .attr('fill','var(--text2)').attr('font-size', 8).attr('font-family','var(--mono)')
+    .text(d => fmt$(d.totalExposure));
+}
+
+// ============ CORRELATION (FIXED) ============
+function renderCorrelation() {
+  const container = document.getElementById('corr-chart');
+  container.innerHTML = '';
+  const data = S.data;
+
+  const pairCount = new Map();
+  data.parlays.forEach(p => {
+    for (let i = 0; i < p.legIds.length; i++) {
+      for (let j = i+1; j < p.legIds.length; j++) {
+        const key = [p.legIds[i], p.legIds[j]].sort().join('|||');
+        pairCount.set(key, (pairCount.get(key) || 0) + 1);
+      }
+    }
+  });
+
+  const pairs = Array.from(pairCount.entries())
+    .map(([k,v]) => {
+      const [a,b] = k.split('|||');
+      const la = data.legsMap.get(a);
+      const lb = data.legsMap.get(b);
+      return { a: la, b: lb, count: v };
+    })
+    .filter(p => p.a && p.b)
+    .sort((a,b) => b.count - a.count)
+    .slice(0, 8);
+
+  if (!pairs.length) {
+    container.innerHTML = '<div style="color:var(--text3);font-size:11px;text-align:center">No correlation data</div>';
+    return;
+  }
+
+  const maxCount = pairs[0].count;
+  const list = document.createElement('div');
+  list.className = 'corr-list';
+
+  pairs.forEach(p => {
+    const barPct = (p.count / maxCount) * 100;
+    // Blend the two type colors for the bar
+    const color1 = C.colors[p.a.type] || '#888';
+    const color2 = C.colors[p.b.type] || '#888';
+    const shortA = p.a.shortLabel.length > 14 ? p.a.shortLabel.slice(0,13) + '…' : p.a.shortLabel;
+    const shortB = p.b.shortLabel.length > 14 ? p.b.shortLabel.slice(0,13) + '…' : p.b.shortLabel;
+
+    const row = document.createElement('div');
+    row.className = 'corr-pair';
+    row.innerHTML = `
+      <div class="corr-bar" style="width:${barPct}%;background:linear-gradient(90deg,${color1},${color2})"></div>
+      <div class="corr-label" title="${p.a.shortLabel} × ${p.b.shortLabel}">${shortA} × ${shortB}</div>
+      <div class="corr-count">${p.count} parlays</div>
+    `;
+    list.appendChild(row);
+  });
+
+  container.appendChild(list);
+}
+
+// ============ FILL TIMELINE ============
+function renderFillTimeline() {
+  const container = document.getElementById('timeline-chart');
+  const infoEl = document.getElementById('timeline-info');
+  container.innerHTML = '';
+
+  if (!S.fillTimeline || !S.fillTimeline.hours || !S.fillTimeline.hours.length) {
+    // Generate from parlay data if no backend timeline
+    if (S.data && S.data.parlays.length) {
+      renderFillTimelineFromParlays();
+      return;
+    }
+    container.innerHTML = '<div style="color:var(--text3);font-size:11px;text-align:center">No fill data</div>';
+    infoEl.textContent = '--';
+    return;
+  }
+
+  const hours = S.fillTimeline.hours;
+  const totalFills = hours.reduce((s, h) => s + (h.fills || 0), 0);
+  const totalExp = hours.reduce((s, h) => s + (h.exposure || 0), 0);
+  infoEl.textContent = `Fills: ${totalFills} | ${fmt$(totalExp)} total`;
+
+  drawTimelineBars(container, hours.map(h => ({
+    hour: h.hour,
+    value: h.exposure || 0,
+    fills: h.fills || 0,
+  })));
+}
+
+function renderFillTimelineFromParlays() {
+  const container = document.getElementById('timeline-chart');
+  const infoEl = document.getElementById('timeline-info');
+  // Bucket parlays by hour of first fill
+  const buckets = {};
+  S.data.parlays.forEach(p => {
+    if (!p.firstFill) return;
+    const d = new Date(p.firstFill);
+    const h = d.getHours();
+    if (!buckets[h]) buckets[h] = { exposure: 0, fills: 0 };
+    buckets[h].exposure += p.exposure;
+    buckets[h].fills += 1;
+  });
+
+  const hours = [];
+  for (let h = 6; h <= 23; h++) {
+    hours.push({ hour: h, value: buckets[h] ? buckets[h].exposure : 0, fills: buckets[h] ? buckets[h].fills : 0 });
+  }
+
+  const totalFills = hours.reduce((s, h) => s + h.fills, 0);
+  const totalExp = hours.reduce((s, h) => s + h.value, 0);
+  infoEl.textContent = `Fills: ${totalFills} | ${fmt$(totalExp)} total`;
+
+  drawTimelineBars(container, hours);
+}
+
+function drawTimelineBars(container, hours) {
+  const rect = container.getBoundingClientRect();
+  const w = rect.width || 280, h = rect.height || 160;
+  const margin = { top: 10, right: 8, bottom: 22, left: 35 };
+  const iw = w - margin.left - margin.right;
+  const ih = h - margin.top - margin.bottom;
+
+  const svg = d3.select(container).append('svg').attr('width', w).attr('height', h);
+  const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+
+  const maxVal = d3.max(hours, d => d.value) || 1;
+
+  // Cumulative values
+  let cumul = 0;
+  const cumulData = hours.map(d => { cumul += d.value; return { ...d, cumul }; });
+
+  const x = d3.scaleBand().domain(hours.map(d => d.hour)).range([0, iw]).padding(0.2);
+  const y = d3.scaleLinear().domain([0, cumul || 1]).range([ih, 0]);
+
+  // Bar color by time of day
+  function barColor(hour) {
+    if (hour < 12) return 'var(--green)';
+    if (hour < 15) return 'var(--blue)';
+    return 'var(--pink)';
+  }
+
+  g.selectAll('rect').data(cumulData).join('rect')
+    .attr('x', d => x(d.hour))
+    .attr('y', d => y(d.cumul))
+    .attr('width', x.bandwidth())
+    .attr('height', d => ih - y(d.cumul))
+    .attr('fill', d => barColor(d.hour))
+    .attr('opacity', 0.7)
+    .attr('rx', 2);
+
+  // X axis labels
+  g.selectAll('.hour-label').data(hours.filter((d,i) => i % 2 === 0)).join('text')
+    .attr('class', 'hour-label')
+    .attr('x', d => x(d.hour) + x.bandwidth()/2)
+    .attr('y', ih + 14)
+    .attr('text-anchor', 'middle')
+    .attr('fill', 'var(--text3)')
+    .attr('font-size', 8)
+    .attr('font-family', 'var(--mono)')
+    .text(d => {
+      const hr = d.hour % 12 || 12;
+      const ampm = d.hour < 12 ? 'a' : 'p';
+      return `${hr}${ampm}`;
+    });
+
+  // Y axis (2 ticks)
+  const yTicks = [0, cumul];
+  g.selectAll('.y-label').data(yTicks).join('text')
+    .attr('class','y-label')
+    .attr('x', -4)
+    .attr('y', d => y(d) + 3)
+    .attr('text-anchor', 'end')
+    .attr('fill', 'var(--text3)')
+    .attr('font-size', 8)
+    .attr('font-family', 'var(--mono)')
+    .text(d => fmt$(d));
+}
+
+// ============ RENDER ALL ============
+function renderAll() {
+  renderHeaderStats();
+  renderPnlPanel();
+  initGraph();
+  renderSimulator();
+  renderHeatmap();
+  renderStats();
+  if (S.view === 'table') renderTable();
+}
+
+// ============ INITIALIZATION ============
+async function init() {
+  await loadData();
+  S.data = parseData(S.raw[S.sport] || S.raw.nba);
+  renderAll();
+  fetchScoreboard();
+
+  // Auto-refresh every 30 seconds
+  S.refreshTimer = setInterval(() => {
+    refreshData();
+    fetchScoreboard();
+  }, REFRESH_INTERVAL);
+
+  // Sport toggle
+  document.querySelectorAll('.sport-btn').forEach(btn => {
+    btn.addEventListener('click', () => switchSport(btn.dataset.sport));
+  });
+
+  // Click background to deselect
+  document.getElementById('cascade-svg').addEventListener('click', (e) => {
+    if (e.target.tagName === 'svg' || e.target.classList.contains('graph-root')) clearSelection();
+  });
+
+  // Resize handler
+  let resizeTimer;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      initGraph();
+      renderHeatmap();
+      renderStats();
+      if (S.view === 'table') renderTable();
+    }, 250);
+  });
+}
+
+init();
+</script>
+</body>
+</html>
