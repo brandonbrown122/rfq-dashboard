@@ -138,6 +138,8 @@ def _parse_single_fill(header, body):
 def _classify_leg_sport(leg_str):
     """Classify a leg's sport from its ticker suffix."""
     upper = leg_str.upper()
+    if "KXMLB" in upper or "KXMVEMLB" in upper:
+        return "mlb"
     if "KXNBA" in upper or "KXMVENBA" in upper:
         return "nba"
     if "KXNCAAMB" in upper or "KXNCAAB" in upper or "KXMVENCAAMB" in upper:

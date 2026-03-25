@@ -43,6 +43,7 @@
 
   .pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.75em; font-weight: 600; }
   .pill-nba { background: #1d428a33; color: #5b8def; }
+  .pill-mlb { background: #ce112433; color: #e8475e; }
   .pill-ncaab { background: #ff660033; color: var(--orange); }
   .pill-nhl { background: #00000033; color: #ccc; }
   .pill-soccer { background: #3fb95033; color: var(--green); }
@@ -140,6 +141,7 @@
     <select id="leg-sport-filter" onchange="loadLegExposure()">
       <option value="">All</option>
       <option value="nba">NBA</option>
+      <option value="mlb">MLB</option>
       <option value="ncaab">NCAAB</option>
       <option value="nhl">NHL</option>
       <option value="soccer">Soccer</option>
@@ -248,7 +250,7 @@ function renderExposureTable(containerId, groups, labelHeader) {
   let html = '<table><tr><th>' + labelHeader + '</th><th>Collateral</th><th>Count</th><th></th></tr>';
   for (const g of groups) {
     html += `<tr>
-      <td>${g.key === 'nba' || g.key === 'ncaab' || g.key === 'nhl' || g.key === 'soccer' ? sportPill(g.key) : g.key}</td>
+      <td>${g.key === 'nba' || g.key === 'mlb' || g.key === 'ncaab' || g.key === 'nhl' || g.key === 'soccer' ? sportPill(g.key) : g.key}</td>
       <td>${fmt$(g.collateral)}</td>
       <td>${g.count}</td>
       <td style="width:30%">${barHTML(g.collateral, maxCollateral)}</td>

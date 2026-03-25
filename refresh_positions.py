@@ -55,6 +55,8 @@ def _classify_sport_from_leg(leg_str):
     upper = leg_str.upper()
 
     # Check ticker suffix if present
+    if "KXMLB" in upper or "KXMVEMLB" in upper:
+        return "mlb"
     if "KXNBA" in upper or "KXMVENBA" in upper:
         return "nba"
     if "KXNCAAMB" in upper or "KXNCAAB" in upper or "KXMVENCAAMB" in upper:
@@ -65,6 +67,8 @@ def _classify_sport_from_leg(leg_str):
         return "soccer"
 
     # Bet type keywords for sport detection
+    if any(k in upper for k in ("TOTAL RUNS", "HITS", "STRIKEOUTS", "RBI", "INNINGS", "HOME RUN", "EARNED RUN")):
+        return "mlb"
     if any(k in upper for k in ("PTS", "REB", "AST", "3PM", "BLK", "STL", "POINTS SCORED")):
         return "nba"
     if "WINS BY OVER" in upper and "POINTS" in upper:
@@ -92,6 +96,8 @@ def _classify_sport_from_leg(leg_str):
 def _classify_sport_from_ticker(ticker):
     """Classify sport from a Kalshi SGP ticker."""
     upper = (ticker or "").upper()
+    if "MLB" in upper:
+        return "mlb"
     if "NBA" in upper:
         return "nba"
     if "NCAAMB" in upper or "NCAAB" in upper:
@@ -101,7 +107,6 @@ def _classify_sport_from_ticker(ticker):
     if any(t in upper for t in ("EPL", "LALIGA", "SERIEA", "BUNDESLIGA", "LIGUE1", "UCL", "SOCCER")):
         return "soccer"
     # CROSSCATEGORY and SPORTSMULTIGAME tickers are multi-sport parlays
-    # but are predominantly basketball (NBA/NCAAB)
     if "CROSSCATEGORY" in upper or "SPORTSMULTIGAME" in upper:
         return "ncaab"  # default to ncaab since it's mostly college
     return "other"
