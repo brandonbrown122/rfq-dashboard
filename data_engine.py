@@ -356,16 +356,22 @@ def compute_leg_exposure(positions):
     legs = defaultdict(lambda: {"collateral": 0.0, "size": 0.0, "count": 0, "sport": "", "bet_type": ""})
 
     for pos in positions:
-        n_legs = max(len(pos.get("legs", [])), 1)
+        pos_legs = pos.get("legs", [])
+        pos_leg_sports = pos.get("leg_sports", [])
+        n_legs = max(len(pos_legs), 1)
         per_leg_collateral = pos.get("collateral", 0) / n_legs
         per_leg_size = pos.get("size", 0) / n_legs
 
-        for leg_str in pos.get("legs", []):
+        for i, leg_str in enumerate(pos_legs):
             leg_key = re.sub(r'\s*\|\s*KX\S+$', '', leg_str).strip()
             legs[leg_key]["collateral"] += per_leg_collateral
             legs[leg_key]["size"] += per_leg_size
             legs[leg_key]["count"] += 1
-            legs[leg_key]["sport"] = _classify_leg_sport(leg_str)
+            # Use pre-computed leg sport from refresh if available
+            if i < len(pos_leg_sports) and pos_leg_sports[i] != "other":
+                legs[leg_key]["sport"] = pos_leg_sports[i]
+            else:
+                legs[leg_key]["sport"] = _classify_leg_sport(leg_str)
             legs[leg_key]["bet_type"] = _classify_leg_bet_type(leg_str)
 
     result = []
