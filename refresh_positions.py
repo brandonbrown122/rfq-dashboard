@@ -311,11 +311,12 @@ def fetch_fills_from_api(client, days):
         else:
             # Fallback: use title-based parsing
             legs = title_parts
-            leg_sports = [_classify_sport_from_leg(leg) for leg in legs]
-            if all(s == "other" for s in leg_sports):
-                ticker_sport = _classify_sport_from_ticker(ticker)
-                if ticker_sport != "other":
-                    leg_sports = [ticker_sport] * len(legs)
+            # Prefer parent ticker classification over leg-text heuristics
+            ticker_sport = _classify_sport_from_ticker(ticker)
+            if ticker_sport != "other":
+                leg_sports = [ticker_sport] * len(legs)
+            else:
+                leg_sports = [_classify_sport_from_leg(leg) for leg in legs]
 
         sports = list(set(leg_sports)) if leg_sports else ["other"]
 
