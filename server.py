@@ -314,7 +314,8 @@ def performance():
 
 @app.route("/api/performance")
 def api_performance():
-    """7-day performance breakdown: overall, by sport, by bet type, by num legs, daily."""
+    """7-day performance breakdown with deep drill-downs."""
+    import re as _re
     from data_engine import _classify_leg_bet_type
 
     cache = load_cache()
@@ -328,12 +329,19 @@ def api_performance():
         if p.get("settled") and p.get("timestamp", "") >= cutoff
     ]
 
+    # ── helpers ──
+
     def _stats(group):
         wagered = sum(p.get("collateral", 0) for p in group)
         won = sum(p.get("pnl", 0) or 0 for p in group)
         roi = round(won / wagered * 100, 1) if wagered > 0 else 0.0
         wins = sum(1 for p in group if p.get("outcome") == "win")
         losses = sum(1 for p in group if p.get("outcome") == "loss")
+        total = wins + losses
+        win_pct = round(wins / total * 100, 1) if total > 0 else 0.0
+        # Expected win % = average no_cents (probability parlay doesn't hit)
+        no_cents_vals = [p.get("no_cents", 0) for p in group if p.get("no_cents")]
+        expected_win_pct = round(sum(no_cents_vals) / len(no_cents_vals), 1) if no_cents_vals else 0.0
         return {
             "wagered": round(wagered, 2),
             "won": round(won, 2),
@@ -341,12 +349,57 @@ def api_performance():
             "wins": wins,
             "losses": losses,
             "settled": len(group),
+            "win_pct": win_pct,
+            "expected_win_pct": expected_win_pct,
         }
 
-    # Overall
+    def _group_by_bet_type(group):
+        bt_map = defaultdict(list)
+        for p in group:
+            bet_types = set()
+            for leg in p.get("legs", []):
+                bet_types.add(_classify_leg_bet_type(leg))
+            if not bet_types:
+                bet_types = {"other"}
+            for bt in bet_types:
+                bt_map[bt].append(p)
+        result = [{"key": k, **_stats(v)} for k, v in bt_map.items()]
+        result.sort(key=lambda x: x["wagered"], reverse=True)
+        return result
+
+    def _group_by_num_legs(group):
+        m = defaultdict(list)
+        for p in group:
+            m[str(p.get("num_legs", 0))].append(p)
+        result = [{"key": k, **_stats(v)} for k, v in m.items()]
+        result.sort(key=lambda x: int(x["key"]))
+        return result
+
+    PRICE_TIERS = [(99, 100), (97, 98), (95, 96), (90, 94), (85, 89), (0, 84)]
+
+    def _group_by_price(group):
+        tier_map = defaultdict(list)
+        for p in group:
+            nc = p.get("no_cents", 0)
+            for lo, hi in PRICE_TIERS:
+                if lo <= nc <= hi:
+                    label = f"{lo}-{hi}c" if lo != hi else f"{lo}c"
+                    if lo == 0:
+                        label = f"<{hi + 1}c"
+                    tier_map[(lo, hi, label)].append(p)
+                    break
+        result = []
+        for (lo, hi, label), positions in tier_map.items():
+            result.append({"key": label, "sort": lo, **_stats(positions)})
+        result.sort(key=lambda x: x["sort"], reverse=True)
+        for r in result:
+            del r["sort"]
+        return result
+
+    # ── overall ──
     overall = _stats(settled_7d)
 
-    # By sport
+    # ── by sport (top-level) ──
     sport_map = defaultdict(list)
     for p in settled_7d:
         sports = p.get("sports", ["other"])
@@ -357,27 +410,51 @@ def api_performance():
     by_sport = [{"key": k, **_stats(v)} for k, v in sport_map.items()]
     by_sport.sort(key=lambda x: x["wagered"], reverse=True)
 
-    # By bet type
-    bt_map = defaultdict(list)
-    for p in settled_7d:
-        bet_types = set()
-        for leg in p.get("legs", []):
-            bet_types.add(_classify_leg_bet_type(leg))
-        if not bet_types:
-            bet_types = {"other"}
-        for bt in bet_types:
-            bt_map[bt].append(p)
-    by_bet_type = [{"key": k, **_stats(v)} for k, v in bt_map.items()]
-    by_bet_type.sort(key=lambda x: x["wagered"], reverse=True)
+    # ── by bet type (top-level) ──
+    by_bet_type = _group_by_bet_type(settled_7d)
 
-    # By num legs
-    legs_map = defaultdict(list)
-    for p in settled_7d:
-        legs_map[str(p.get("num_legs", 0))].append(p)
-    by_num_legs = [{"key": k, **_stats(v)} for k, v in legs_map.items()]
-    by_num_legs.sort(key=lambda x: int(x["key"]))
+    # ── by num legs (top-level) ──
+    by_num_legs = _group_by_num_legs(settled_7d)
 
-    # Daily breakdown
+    # ── by price tier (top-level) ──
+    by_price = _group_by_price(settled_7d)
+
+    # ── per-sport detail ──
+    sport_detail = {}
+    for sport_key, sport_positions in sport_map.items():
+        detail = {
+            "by_bet_type": _group_by_bet_type(sport_positions),
+            "by_num_legs": _group_by_num_legs(sport_positions),
+            "by_price": _group_by_price(sport_positions),
+        }
+        # Player prop detail for this sport
+        prop_map = defaultdict(list)
+        for p in sport_positions:
+            for leg in p.get("legs", []):
+                if _classify_leg_bet_type(leg) == "player_prop":
+                    # Strip ticker suffix, keep the prop description
+                    prop_name = _re.sub(r'\s*\|\s*KX\S+$', '', leg).strip()
+                    # Remove [YES]/[NO] prefix
+                    prop_name = _re.sub(r'^\[(YES|NO)\]\s*', '', prop_name).strip()
+                    prop_map[prop_name].append(p)
+        if prop_map:
+            props = []
+            for prop_name, prop_positions in prop_map.items():
+                wins = sum(1 for p in prop_positions if p.get("outcome") == "win")
+                losses = sum(1 for p in prop_positions if p.get("outcome") == "loss")
+                total = wins + losses
+                props.append({
+                    "prop": prop_name,
+                    "wins": wins,
+                    "losses": losses,
+                    "total": total,
+                    "win_pct": round(wins / total * 100, 1) if total > 0 else 0.0,
+                })
+            props.sort(key=lambda x: x["total"], reverse=True)
+            detail["player_props"] = props
+        sport_detail[sport_key] = detail
+
+    # ── daily breakdown with win% and expected win% ──
     daily_map = defaultdict(list)
     for p in settled_7d:
         d = p.get("timestamp", "")[:10]
@@ -390,6 +467,8 @@ def api_performance():
         "by_sport": by_sport,
         "by_bet_type": by_bet_type,
         "by_num_legs": by_num_legs,
+        "by_price": by_price,
+        "sport_detail": sport_detail,
         "daily": daily,
         "last_refresh": cache.get("last_refresh"),
     })

@@ -16,6 +16,7 @@
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', monospace; background: var(--bg); color: var(--text); padding: 20px; }
   h1 { font-size: 1.5em; margin-bottom: 4px; }
   h2 { font-size: 1.1em; color: var(--accent); margin-bottom: 12px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+  h3 { font-size: 0.95em; color: var(--text); margin-bottom: 8px; margin-top: 16px; }
 
   .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 2px solid var(--border); }
   .header-right { font-size: 0.85em; color: var(--muted); }
@@ -45,6 +46,7 @@
   .pill-nhl { background: #00000033; color: #ccc; }
   .pill-soccer { background: #3fb95033; color: var(--green); }
   .pill-other { background: #30363d; color: var(--muted); }
+  .pill-cross { background: #d2992233; color: var(--yellow); }
 
   .bar { height: 6px; border-radius: 3px; background: var(--border); margin-top: 4px; }
   .bar-fill { height: 100%; border-radius: 3px; }
@@ -55,12 +57,24 @@
   .page-tab:hover { color: var(--text); }
   .page-tab.active { background: var(--bg); color: var(--accent); border-color: var(--accent); }
 
+  .sport-section { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+  .sport-header { display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; }
+  .sport-header:hover { opacity: 0.85; }
+  .sport-body { margin-top: 12px; }
+  .sport-body.collapsed { display: none; }
+  .toggle-icon { font-size: 0.9em; color: var(--muted); transition: transform 0.2s; }
+  .toggle-icon.open { transform: rotate(90deg); }
+
+  .sub-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+  .sub-card { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 12px; }
+
   .loading { color: var(--muted); font-style: italic; }
 
   @media (max-width: 900px) {
     .grid-4 { grid-template-columns: repeat(2, 1fr); }
     .grid-3 { grid-template-columns: 1fr; }
     .grid-2 { grid-template-columns: 1fr; }
+    .sub-grid { grid-template-columns: 1fr; }
   }
 </style>
 </head>
@@ -85,11 +99,11 @@
   <div class="card"><div class="card-label">Total Wagered</div><div class="card-value loading" id="total-wagered">...</div><div class="card-sub" id="total-settled"></div></div>
   <div class="card"><div class="card-label">Net P&L</div><div class="card-value loading" id="total-won">...</div></div>
   <div class="card"><div class="card-label">ROI</div><div class="card-value loading" id="total-roi">...</div></div>
-  <div class="card"><div class="card-label">Win Rate</div><div class="card-value loading" id="total-winrate">...</div><div class="card-sub" id="total-wl"></div></div>
+  <div class="card"><div class="card-label">Win Rate</div><div class="card-value loading" id="total-winrate">...</div><div class="card-sub" id="total-wl"></div><div class="card-sub" id="total-expected"></div></div>
 </div>
 
-<!-- Breakdowns -->
-<div class="grid grid-3 section">
+<!-- Top-level Breakdowns -->
+<div class="grid grid-2 section">
   <div class="card">
     <h2>By Sport</h2>
     <div id="by-sport"><span class="loading">Loading...</span></div>
@@ -98,10 +112,22 @@
     <h2>By Leg Type</h2>
     <div id="by-bet-type"><span class="loading">Loading...</span></div>
   </div>
+</div>
+<div class="grid grid-2 section">
   <div class="card">
     <h2>By # Legs</h2>
     <div id="by-num-legs"><span class="loading">Loading...</span></div>
   </div>
+  <div class="card">
+    <h2>By Price Tier</h2>
+    <div id="by-price"><span class="loading">Loading...</span></div>
+  </div>
+</div>
+
+<!-- Per-Sport Detail Sections -->
+<div class="section" id="sport-details">
+  <h2>Sport Detail</h2>
+  <div id="sport-detail-container"><span class="loading">Loading...</span></div>
 </div>
 
 <!-- Daily P&L -->
@@ -115,39 +141,50 @@ function fmt$(v) { return v >= 0 ? `$${v.toLocaleString('en-US', {minimumFractio
 function fmtPct(v) { return v.toFixed(1) + '%'; }
 function pnlClass(v) { return v >= 0 ? 'positive' : 'negative'; }
 function sportPill(s) {
-  const sports = ['nba','mlb','ncaab','nhl','soccer'];
+  const sports = ['nba','mlb','ncaab','nhl','soccer','cross'];
   const cls = sports.includes(s) ? `pill-${s}` : 'pill-other';
   return `<span class="pill ${cls}">${s.toUpperCase()}</span>`;
 }
 
-function barHTML(value, max, color) {
-  const pct = max > 0 ? Math.min(Math.abs(value) / max * 100, 100) : 0;
-  const c = color || 'var(--accent)';
-  return `<div class="bar"><div class="bar-fill" style="width:${pct}%;background:${c}"></div></div>`;
-}
-
-function renderBreakdownTable(containerId, rows, labelHeader, usePill) {
-  const el = document.getElementById(containerId);
-  if (!rows || rows.length === 0) { el.innerHTML = '<span class="muted">No data</span>'; return; }
-
+function renderTable(rows, labelHeader, usePill) {
+  if (!rows || rows.length === 0) return '<span class="muted">No data</span>';
   const maxWagered = Math.max(...rows.map(r => r.wagered));
-
-  let html = `<table><tr><th>${labelHeader}</th><th>Wagered</th><th>P&L</th><th>ROI</th><th>W/L</th><th></th></tr>`;
+  let html = `<table><tr><th>${labelHeader}</th><th>Wagered</th><th>P&L</th><th>ROI</th><th>Win%</th><th>Exp Win%</th><th>W/L</th></tr>`;
   for (const r of rows) {
     const label = usePill ? sportPill(r.key) : r.key;
-    const winRate = r.settled > 0 ? fmtPct(r.wins / r.settled * 100) : '-';
-    const roiColor = r.roi >= 0 ? 'var(--green)' : 'var(--red)';
     html += `<tr>
       <td>${label}</td>
       <td>${fmt$(r.wagered)}</td>
       <td class="${pnlClass(r.won)}">${fmt$(r.won)}</td>
       <td class="${pnlClass(r.roi)}">${fmtPct(r.roi)}</td>
+      <td>${fmtPct(r.win_pct)}</td>
+      <td>${fmtPct(r.expected_win_pct)}</td>
       <td>${r.wins}W / ${r.losses}L</td>
-      <td style="width:20%">${barHTML(r.wagered, maxWagered, roiColor)}</td>
     </tr>`;
   }
   html += '</table>';
-  el.innerHTML = html;
+  return html;
+}
+
+function renderPropsTable(props) {
+  if (!props || props.length === 0) return '<span class="muted">No player props</span>';
+  let html = '<table><tr><th>Player Prop</th><th>Record</th><th>Win%</th></tr>';
+  for (const p of props) {
+    html += `<tr>
+      <td style="max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${p.prop}">${p.prop}</td>
+      <td>${p.wins}W / ${p.losses}L</td>
+      <td class="${pnlClass(p.win_pct - 50)}">${fmtPct(p.win_pct)}</td>
+    </tr>`;
+  }
+  html += '</table>';
+  return html;
+}
+
+function toggleSport(id) {
+  const body = document.getElementById('sport-body-' + id);
+  const icon = document.getElementById('sport-icon-' + id);
+  body.classList.toggle('collapsed');
+  icon.classList.toggle('open');
 }
 
 async function loadPerformance() {
@@ -177,28 +214,77 @@ async function loadPerformance() {
   el('total-roi').classList.remove('loading');
   el('total-roi').classList.add(pnlClass(o.roi));
 
-  const wr = o.settled > 0 ? o.wins / o.settled * 100 : 0;
-  el('total-winrate').textContent = fmtPct(wr);
+  el('total-winrate').textContent = fmtPct(o.win_pct);
   el('total-winrate').classList.remove('loading');
   el('total-wl').textContent = `${o.wins}W / ${o.losses}L`;
+  el('total-expected').textContent = `Expected: ${fmtPct(o.expected_win_pct)}`;
 
-  // Breakdowns
-  renderBreakdownTable('by-sport', d.by_sport, 'Sport', true);
-  renderBreakdownTable('by-bet-type', d.by_bet_type, 'Leg Type', false);
-  renderBreakdownTable('by-num-legs', d.by_num_legs, '# Legs', false);
+  // Top-level breakdowns
+  el('by-sport').innerHTML = renderTable(d.by_sport, 'Sport', true);
+  el('by-bet-type').innerHTML = renderTable(d.by_bet_type, 'Leg Type', false);
+  el('by-num-legs').innerHTML = renderTable(d.by_num_legs, '# Legs', false);
+  el('by-price').innerHTML = renderTable(d.by_price, 'Price Tier', false);
+
+  // Per-sport detail sections
+  const container = el('sport-detail-container');
+  if (!d.sport_detail || Object.keys(d.sport_detail).length === 0) {
+    container.innerHTML = '<span class="muted">No data</span>';
+  } else {
+    // Sort sports by the by_sport order (most wagered first)
+    const sportOrder = d.by_sport.map(s => s.key);
+    let html = '';
+    for (const sportKey of sportOrder) {
+      const detail = d.sport_detail[sportKey];
+      if (!detail) continue;
+      const sportStats = d.by_sport.find(s => s.key === sportKey);
+      const summary = sportStats
+        ? `${fmt$(sportStats.wagered)} wagered | ${fmt$(sportStats.won)} P&L | ${fmtPct(sportStats.win_pct)} win rate`
+        : '';
+
+      html += `<div class="sport-section">
+        <div class="sport-header" onclick="toggleSport('${sportKey}')">
+          <div>${sportPill(sportKey)} <span style="margin-left:8px;font-size:0.85em;color:var(--muted)">${summary}</span></div>
+          <span class="toggle-icon" id="sport-icon-${sportKey}">&#9654;</span>
+        </div>
+        <div class="sport-body collapsed" id="sport-body-${sportKey}">
+          <div class="sub-grid">
+            <div class="sub-card">
+              <h3>By Leg Type</h3>
+              ${renderTable(detail.by_bet_type, 'Type', false)}
+            </div>
+            <div class="sub-card">
+              <h3>By # Legs</h3>
+              ${renderTable(detail.by_num_legs, '# Legs', false)}
+            </div>
+          </div>
+          <div class="sub-card" style="margin-bottom:12px">
+            <h3>By Price Tier</h3>
+            ${renderTable(detail.by_price, 'Price Tier', false)}
+          </div>
+          ${detail.player_props ? `<div class="sub-card">
+            <h3>Player Props Detail</h3>
+            ${renderPropsTable(detail.player_props)}
+          </div>` : ''}
+        </div>
+      </div>`;
+    }
+    container.innerHTML = html;
+  }
 
   // Daily table
   const dailyEl = el('daily-table');
   if (!d.daily || d.daily.length === 0) {
     dailyEl.innerHTML = '<span class="muted">No data</span>';
   } else {
-    let html = '<table><tr><th>Date</th><th>Wagered</th><th>P&L</th><th>ROI</th><th>W/L</th></tr>';
+    let html = '<table><tr><th>Date</th><th>Wagered</th><th>P&L</th><th>ROI</th><th>Win%</th><th>Exp Win%</th><th>W/L</th></tr>';
     for (const day of d.daily) {
       html += `<tr>
         <td>${day.date}</td>
         <td>${fmt$(day.wagered)}</td>
         <td class="${pnlClass(day.won)}">${fmt$(day.won)}</td>
         <td class="${pnlClass(day.roi)}">${fmtPct(day.roi)}</td>
+        <td>${fmtPct(day.win_pct)}</td>
+        <td>${fmtPct(day.expected_win_pct)}</td>
         <td>${day.wins}W / ${day.losses}L</td>
       </tr>`;
     }
