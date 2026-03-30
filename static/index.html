@@ -82,6 +82,7 @@
 
 <div class="page-tabs">
   <a href="/" class="page-tab active">Positions</a>
+  <a href="/performance" class="page-tab">Performance</a>
   <a href="/cascade" class="page-tab">Cascade Visualizer</a>
 </div>
 
@@ -97,11 +98,9 @@
 </div>
 
 <!-- Balance + Summary Cards -->
-<div class="grid grid-4 section" id="summary-cards">
+<div class="grid grid-2 section" id="summary-cards">
   <div class="card"><div class="card-label">Balance</div><div class="card-value loading" id="balance-val">...</div><div class="card-sub" id="balance-sub"></div></div>
   <div class="card"><div class="card-label">Open Positions</div><div class="card-value loading" id="open-count">...</div><div class="card-sub" id="open-collateral"></div></div>
-  <div class="card"><div class="card-label">Win Rate (7-Day)</div><div class="card-value loading" id="win-rate">...</div><div class="card-sub" id="win-rate-sub"></div><div class="card-sub" id="win-rate-today" style="margin-top:6px;color:var(--accent)"></div></div>
-  <div class="card"><div class="card-label">Settled P&L (7-Day)</div><div class="card-value loading" id="total-pnl">...</div><div class="card-sub" id="pnl-sub"></div><div class="card-sub" id="pnl-today" style="margin-top:6px;color:var(--accent)"></div></div>
 </div>
 
 <!-- Fill Velocity -->
@@ -205,35 +204,6 @@ async function loadSummary() {
   el('open-count').textContent = d.open_positions;
   el('open-count').classList.remove('loading');
   el('open-collateral').textContent = `Collateral: ${fmt$(d.open_collateral)} | Size: ${fmt$(d.open_size)}`;
-
-  el('win-rate').textContent = fmtPct(d.win_rate);
-  el('win-rate').classList.remove('loading');
-  el('win-rate-sub').textContent = `W: ${d.wins} | L: ${d.losses} | Settled: ${d.settled_positions}`;
-
-  // Today's win rate
-  if (d.today) {
-    const t = d.today;
-    const todaySettled = t.wins + t.losses;
-    if (todaySettled > 0) {
-      el('win-rate-today').textContent = `Today: ${fmtPct(t.win_rate)} (W: ${t.wins} | L: ${t.losses})`;
-    } else {
-      el('win-rate-today').textContent = `Today: No settlements yet`;
-    }
-  }
-
-  const pnlEl = el('total-pnl');
-  pnlEl.textContent = fmt$(d.total_pnl);
-  pnlEl.classList.remove('loading');
-  pnlEl.classList.add(d.total_pnl >= 0 ? 'positive' : 'negative');
-  el('pnl-sub').textContent = `${d.settled_positions} settled positions`;
-
-  // Today's P&L
-  if (d.today) {
-    const t = d.today;
-    const todayEl = el('pnl-today');
-    todayEl.textContent = `Today: ${fmt$(t.pnl)} (${t.settled} settled, ${t.open} opened)`;
-    todayEl.style.color = t.pnl >= 0 ? 'var(--green)' : 'var(--red)';
-  }
 
   if (d.last_refresh) {
     const dt = new Date(d.last_refresh);

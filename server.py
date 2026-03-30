@@ -28,7 +28,8 @@ import subprocess
 import threading
 import time
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from collections import defaultdict
 
 from flask import Flask, jsonify, send_from_directory, request
 from flask_cors import CORS
@@ -304,6 +305,94 @@ def api_top_risk():
     top = get_top_risk_positions(positions, n=n)
     total = sum(p.get("collateral", 0) for p in top)
     return jsonify({"count": len(top), "total_collateral": round(total, 2), "positions": top})
+
+
+@app.route("/performance")
+def performance():
+    return send_from_directory(app.static_folder, "performance.html")
+
+
+@app.route("/api/performance")
+def api_performance():
+    """7-day performance breakdown: overall, by sport, by bet type, by num legs, daily."""
+    from data_engine import _classify_leg_bet_type
+
+    cache = load_cache()
+    positions = cache.get("positions", [])
+
+    now = datetime.now(timezone.utc)
+    cutoff = (now - timedelta(days=7)).strftime("%Y-%m-%d")
+
+    settled_7d = [
+        p for p in positions
+        if p.get("settled") and p.get("timestamp", "") >= cutoff
+    ]
+
+    def _stats(group):
+        wagered = sum(p.get("collateral", 0) for p in group)
+        won = sum(p.get("pnl", 0) or 0 for p in group)
+        roi = round(won / wagered * 100, 1) if wagered > 0 else 0.0
+        wins = sum(1 for p in group if p.get("outcome") == "win")
+        losses = sum(1 for p in group if p.get("outcome") == "loss")
+        return {
+            "wagered": round(wagered, 2),
+            "won": round(won, 2),
+            "roi": roi,
+            "wins": wins,
+            "losses": losses,
+            "settled": len(group),
+        }
+
+    # Overall
+    overall = _stats(settled_7d)
+
+    # By sport
+    sport_map = defaultdict(list)
+    for p in settled_7d:
+        sports = p.get("sports", ["other"])
+        if not sports:
+            sports = ["other"]
+        for s in sports:
+            sport_map[s].append(p)
+    by_sport = [{"key": k, **_stats(v)} for k, v in sport_map.items()]
+    by_sport.sort(key=lambda x: x["wagered"], reverse=True)
+
+    # By bet type
+    bt_map = defaultdict(list)
+    for p in settled_7d:
+        bet_types = set()
+        for leg in p.get("legs", []):
+            bet_types.add(_classify_leg_bet_type(leg))
+        if not bet_types:
+            bet_types = {"other"}
+        for bt in bet_types:
+            bt_map[bt].append(p)
+    by_bet_type = [{"key": k, **_stats(v)} for k, v in bt_map.items()]
+    by_bet_type.sort(key=lambda x: x["wagered"], reverse=True)
+
+    # By num legs
+    legs_map = defaultdict(list)
+    for p in settled_7d:
+        legs_map[str(p.get("num_legs", 0))].append(p)
+    by_num_legs = [{"key": k, **_stats(v)} for k, v in legs_map.items()]
+    by_num_legs.sort(key=lambda x: int(x["key"]))
+
+    # Daily breakdown
+    daily_map = defaultdict(list)
+    for p in settled_7d:
+        d = p.get("timestamp", "")[:10]
+        daily_map[d].append(p)
+    daily = [{"date": d, **_stats(daily_map[d])} for d in sorted(daily_map.keys())]
+
+    return jsonify({
+        "period": "7d",
+        "overall": overall,
+        "by_sport": by_sport,
+        "by_bet_type": by_bet_type,
+        "by_num_legs": by_num_legs,
+        "daily": daily,
+        "last_refresh": cache.get("last_refresh"),
+    })
 
 
 @app.route("/api/refresh", methods=["POST"])

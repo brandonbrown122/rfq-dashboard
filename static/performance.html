@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="data:,">
+<title>Performance — RFQ Bot Dashboard</title>
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --text: #e6edf3; --muted: #8b949e; --accent: #58a6ff;
+    --green: #3fb950; --red: #f85149; --yellow: #d29922;
+    --orange: #db6d28;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', monospace; background: var(--bg); color: var(--text); padding: 20px; }
+  h1 { font-size: 1.5em; margin-bottom: 4px; }
+  h2 { font-size: 1.1em; color: var(--accent); margin-bottom: 12px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+
+  .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 2px solid var(--border); }
+  .header-right { font-size: 0.85em; color: var(--muted); }
+
+  .grid { display: grid; gap: 16px; margin-bottom: 20px; }
+  .grid-4 { grid-template-columns: repeat(4, 1fr); }
+  .grid-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .grid-2 { grid-template-columns: 1fr 1fr; }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+  .card-label { font-size: 0.75em; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+  .card-value { font-size: 1.6em; font-weight: 700; }
+  .card-sub { font-size: 0.8em; color: var(--muted); margin-top: 2px; }
+
+  .positive { color: var(--green); }
+  .negative { color: var(--red); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.85em; }
+  th { text-align: left; padding: 8px 10px; color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--border); font-size: 0.75em; text-transform: uppercase; letter-spacing: 0.3px; }
+  td { padding: 7px 10px; border-bottom: 1px solid var(--border); }
+  tr:hover { background: rgba(88,166,255,0.05); }
+
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.75em; font-weight: 600; }
+  .pill-nba { background: #1d428a33; color: #5b8def; }
+  .pill-mlb { background: #ce112433; color: #e8475e; }
+  .pill-ncaab { background: #ff660033; color: var(--orange); }
+  .pill-nhl { background: #00000033; color: #ccc; }
+  .pill-soccer { background: #3fb95033; color: var(--green); }
+  .pill-other { background: #30363d; color: var(--muted); }
+
+  .bar { height: 6px; border-radius: 3px; background: var(--border); margin-top: 4px; }
+  .bar-fill { height: 100%; border-radius: 3px; }
+
+  .section { margin-bottom: 24px; }
+  .page-tabs { display: flex; gap: 4px; margin-bottom: 16px; }
+  .page-tab { padding: 8px 20px; border-radius: 6px 6px 0 0; font-size: 0.85em; font-weight: 600; text-decoration: none; color: var(--muted); background: var(--surface); border: 1px solid var(--border); border-bottom: none; transition: all 0.2s; }
+  .page-tab:hover { color: var(--text); }
+  .page-tab.active { background: var(--bg); color: var(--accent); border-color: var(--accent); }
+
+  .loading { color: var(--muted); font-style: italic; }
+
+  @media (max-width: 900px) {
+    .grid-4 { grid-template-columns: repeat(2, 1fr); }
+    .grid-3 { grid-template-columns: 1fr; }
+    .grid-2 { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="page-tabs">
+  <a href="/" class="page-tab">Positions</a>
+  <a href="/performance" class="page-tab active">Performance</a>
+  <a href="/cascade" class="page-tab">Cascade Visualizer</a>
+</div>
+
+<div class="header">
+  <div>
+    <h1>7-Day Performance</h1>
+    <span id="last-refresh" style="font-size:0.8em;color:var(--muted)"></span>
+  </div>
+  <div class="header-right">Settled positions only</div>
+</div>
+
+<!-- Overall Stats -->
+<div class="grid grid-4 section" id="overall-cards">
+  <div class="card"><div class="card-label">Total Wagered</div><div class="card-value loading" id="total-wagered">...</div><div class="card-sub" id="total-settled"></div></div>
+  <div class="card"><div class="card-label">Net P&L</div><div class="card-value loading" id="total-won">...</div></div>
+  <div class="card"><div class="card-label">ROI</div><div class="card-value loading" id="total-roi">...</div></div>
+  <div class="card"><div class="card-label">Win Rate</div><div class="card-value loading" id="total-winrate">...</div><div class="card-sub" id="total-wl"></div></div>
+</div>
+
+<!-- Breakdowns -->
+<div class="grid grid-3 section">
+  <div class="card">
+    <h2>By Sport</h2>
+    <div id="by-sport"><span class="loading">Loading...</span></div>
+  </div>
+  <div class="card">
+    <h2>By Leg Type</h2>
+    <div id="by-bet-type"><span class="loading">Loading...</span></div>
+  </div>
+  <div class="card">
+    <h2>By # Legs</h2>
+    <div id="by-num-legs"><span class="loading">Loading...</span></div>
+  </div>
+</div>
+
+<!-- Daily P&L -->
+<div class="card section">
+  <h2>Daily Breakdown (Last 7 Days)</h2>
+  <div id="daily-table"><span class="loading">Loading...</span></div>
+</div>
+
+<script>
+function fmt$(v) { return v >= 0 ? `$${v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}` : `-$${Math.abs(v).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}`; }
+function fmtPct(v) { return v.toFixed(1) + '%'; }
+function pnlClass(v) { return v >= 0 ? 'positive' : 'negative'; }
+function sportPill(s) {
+  const sports = ['nba','mlb','ncaab','nhl','soccer'];
+  const cls = sports.includes(s) ? `pill-${s}` : 'pill-other';
+  return `<span class="pill ${cls}">${s.toUpperCase()}</span>`;
+}
+
+function barHTML(value, max, color) {
+  const pct = max > 0 ? Math.min(Math.abs(value) / max * 100, 100) : 0;
+  const c = color || 'var(--accent)';
+  return `<div class="bar"><div class="bar-fill" style="width:${pct}%;background:${c}"></div></div>`;
+}
+
+function renderBreakdownTable(containerId, rows, labelHeader, usePill) {
+  const el = document.getElementById(containerId);
+  if (!rows || rows.length === 0) { el.innerHTML = '<span class="muted">No data</span>'; return; }
+
+  const maxWagered = Math.max(...rows.map(r => r.wagered));
+
+  let html = `<table><tr><th>${labelHeader}</th><th>Wagered</th><th>P&L</th><th>ROI</th><th>W/L</th><th></th></tr>`;
+  for (const r of rows) {
+    const label = usePill ? sportPill(r.key) : r.key;
+    const winRate = r.settled > 0 ? fmtPct(r.wins / r.settled * 100) : '-';
+    const roiColor = r.roi >= 0 ? 'var(--green)' : 'var(--red)';
+    html += `<tr>
+      <td>${label}</td>
+      <td>${fmt$(r.wagered)}</td>
+      <td class="${pnlClass(r.won)}">${fmt$(r.won)}</td>
+      <td class="${pnlClass(r.roi)}">${fmtPct(r.roi)}</td>
+      <td>${r.wins}W / ${r.losses}L</td>
+      <td style="width:20%">${barHTML(r.wagered, maxWagered, roiColor)}</td>
+    </tr>`;
+  }
+  html += '</table>';
+  el.innerHTML = html;
+}
+
+async function loadPerformance() {
+  let d;
+  try {
+    const r = await fetch('/api/performance');
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    d = await r.json();
+  } catch (e) {
+    console.error('Failed to load performance:', e);
+    return;
+  }
+
+  const el = (id) => document.getElementById(id);
+  const o = d.overall;
+
+  // Overall cards
+  el('total-wagered').textContent = fmt$(o.wagered);
+  el('total-wagered').classList.remove('loading');
+  el('total-settled').textContent = `${o.settled} settled positions`;
+
+  el('total-won').textContent = fmt$(o.won);
+  el('total-won').classList.remove('loading');
+  el('total-won').classList.add(pnlClass(o.won));
+
+  el('total-roi').textContent = fmtPct(o.roi);
+  el('total-roi').classList.remove('loading');
+  el('total-roi').classList.add(pnlClass(o.roi));
+
+  const wr = o.settled > 0 ? o.wins / o.settled * 100 : 0;
+  el('total-winrate').textContent = fmtPct(wr);
+  el('total-winrate').classList.remove('loading');
+  el('total-wl').textContent = `${o.wins}W / ${o.losses}L`;
+
+  // Breakdowns
+  renderBreakdownTable('by-sport', d.by_sport, 'Sport', true);
+  renderBreakdownTable('by-bet-type', d.by_bet_type, 'Leg Type', false);
+  renderBreakdownTable('by-num-legs', d.by_num_legs, '# Legs', false);
+
+  // Daily table
+  const dailyEl = el('daily-table');
+  if (!d.daily || d.daily.length === 0) {
+    dailyEl.innerHTML = '<span class="muted">No data</span>';
+  } else {
+    let html = '<table><tr><th>Date</th><th>Wagered</th><th>P&L</th><th>ROI</th><th>W/L</th></tr>';
+    for (const day of d.daily) {
+      html += `<tr>
+        <td>${day.date}</td>
+        <td>${fmt$(day.wagered)}</td>
+        <td class="${pnlClass(day.won)}">${fmt$(day.won)}</td>
+        <td class="${pnlClass(day.roi)}">${fmtPct(day.roi)}</td>
+        <td>${day.wins}W / ${day.losses}L</td>
+      </tr>`;
+    }
+    html += '</table>';
+    dailyEl.innerHTML = html;
+  }
+
+  // Last refresh
+  if (d.last_refresh) {
+    const dt = new Date(d.last_refresh);
+    el('last-refresh').textContent = `Last refresh: ${dt.toLocaleString()}`;
+  }
+}
+
+loadPerformance();
+</script>
+
+</body>
+</html>
