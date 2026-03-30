@@ -65,8 +65,15 @@
   .loading { color: var(--muted); font-style: italic; }
   .error { color: var(--red); }
 
-  .legs-list { font-size: 0.8em; color: var(--muted); margin-top: 4px; }
-  .legs-list span { display: block; padding: 1px 0; }
+  .legs-list { font-size: 0.8em; margin-top: 4px; }
+  .leg-row { display: flex; align-items: center; gap: 6px; padding: 2px 0; border-bottom: 1px solid rgba(48,54,61,0.4); }
+  .leg-row:last-child { border-bottom: none; }
+  .leg-side { font-size: 0.7em; font-weight: 700; padding: 1px 4px; border-radius: 3px; flex-shrink: 0; }
+  .leg-side.yes { background: #3fb95022; color: var(--green); }
+  .leg-side.no { background: #f8514922; color: var(--red); }
+  .leg-type { font-size: 0.7em; color: var(--accent); background: rgba(88,166,255,0.1); padding: 1px 5px; border-radius: 3px; flex-shrink: 0; white-space: nowrap; }
+  .leg-desc { color: var(--text); }
+  .leg-game { color: var(--muted); font-size: 0.9em; }
 
   .filter-row { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; font-size: 0.8em; }
   .filter-row select, .filter-row input { background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 4px 8px; border-radius: 4px; font-size: 0.85em; }
@@ -187,6 +194,70 @@ function barHTML(value, max) {
   return `<div class="bar"><div class="bar-fill" style="width:${pct}%"></div></div>`;
 }
 
+function formatLeg(raw) {
+  // Strip ticker suffix
+  let s = raw.replace(/\s*\|\s*KX\S+$/, '').trim();
+
+  // Extract side [YES]/[NO]
+  let side = '';
+  const sideMatch = s.match(/^\[(YES|NO)\]\s*/i);
+  if (sideMatch) {
+    side = sideMatch[1].toUpperCase();
+    s = s.slice(sideMatch[0].length);
+  }
+
+  // Extract bet type prefix (e.g. "Moneyline:", "Player Strikeouts:", "Run Line:", "Total Runs:")
+  let betType = '';
+  const typePatterns = [
+    /^(Player Strikeouts):\s*/i, /^(Player Hits \+ Runs \+ RBIs):\s*/i,
+    /^(Player Home Runs):\s*/i, /^(Player Hits):\s*/i, /^(Player Bases):\s*/i,
+    /^(1st Inning Total Runs):\s*/i, /^(Total Runs):\s*/i, /^(Run Line):\s*/i,
+    /^(Point Spread):\s*/i, /^(Moneyline):\s*/i, /^(ML):\s*/i,
+    /^(BTTS)\s*/i,
+  ];
+  for (const pat of typePatterns) {
+    const m = s.match(pat);
+    if (m) {
+      betType = m[1];
+      s = s.slice(m[0].length);
+      break;
+    }
+  }
+  // Also handle NBA format like "LaMelo Ball over 14.5 PTS"
+  if (!betType) {
+    const nbaMatch = s.match(/^(.+?)\s+over\s+([\d.]+)\s+(PTS|REB|AST|3PM|BLK|STL)\b/i);
+    if (nbaMatch) {
+      betType = nbaMatch[3].toUpperCase();
+      // Keep description as-is, just identified the type
+    }
+  }
+
+  // Extract game context (Team@Team) or [League] tag
+  let game = '';
+  const gameMatch = s.match(/\s*\(([^)]+)\)\s*$/);
+  if (gameMatch) {
+    game = gameMatch[1];
+    s = s.slice(0, -gameMatch[0].length).trim();
+  }
+
+  // Short label for bet type
+  const typeLabels = {
+    'moneyline': 'ML', 'ml': 'ML', 'point spread': 'Spread', 'run line': 'Spread',
+    'player strikeouts': 'K', 'player hits': 'Hits', 'player home runs': 'HR',
+    'player hits + runs + rbis': 'H+R+RBI', 'player bases': 'TB',
+    'total runs': 'Total', '1st inning total runs': '1st Inn',
+    'btts': 'BTTS', 'pts': 'PTS', 'reb': 'REB', 'ast': 'AST',
+    '3pm': '3PM', 'blk': 'BLK', 'stl': 'STL',
+  };
+  const typeLabel = typeLabels[betType.toLowerCase()] || betType;
+
+  const sideHTML = side ? `<span class="leg-side ${side.toLowerCase()}">${side}</span>` : '';
+  const typeHTML = typeLabel ? `<span class="leg-type">${typeLabel}</span>` : '';
+  const gameHTML = game ? ` <span class="leg-game">(${game})</span>` : '';
+
+  return `<div class="leg-row">${sideHTML}${typeHTML}<span class="leg-desc">${s}${gameHTML}</span></div>`;
+}
+
 async function loadBalance() {
   const d = await fetchJSON('/api/balance');
   if (!d || d.error) { document.getElementById('balance-val').textContent = 'Error'; return; }
@@ -243,7 +314,7 @@ async function loadRecentFills() {
   let html = '<table><tr><th>Time</th><th>Sports</th><th>Legs</th><th>Collateral</th><th>Price</th><th>Status</th><th>Details</th></tr>';
   for (const p of recent) {
     const sports = (p.sports || []).map(s => sportPill(s)).join(' ');
-    const legsHTML = (p.legs || []).map(l => `<span>${l.replace(/\s*\|\s*KX\S+$/, '')}</span>`).join('');
+    const legsHTML = (p.legs || []).map(l => formatLeg(l)).join('');
     const status = p.settled
       ? `<span class="${p.outcome === 'win' ? 'positive' : p.outcome === 'loss' ? 'negative' : 'muted'}">${(p.outcome || 'settled').toUpperCase()}</span>`
       : '<span class="neutral">OPEN</span>';
@@ -309,7 +380,7 @@ async function loadTopRisk() {
   let html = '<table><tr><th>Time</th><th>Sports</th><th>Legs</th><th>Collateral</th><th>Size</th><th>Price</th><th>Details</th></tr>';
   for (const p of d.positions) {
     const sports = (p.sports || []).map(s => sportPill(s)).join(' ');
-    const legsHTML = (p.legs || []).map(l => `<span>${l.replace(/\s*\|\s*KX\S+$/, '')}</span>`).join('');
+    const legsHTML = (p.legs || []).map(l => formatLeg(l)).join('');
     html += `<tr>
       <td style="white-space:nowrap">${p.timestamp || ''}</td>
       <td>${sports}</td>
