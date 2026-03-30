@@ -195,10 +195,15 @@ function barHTML(value, max) {
 }
 
 function formatLeg(raw) {
-  // Strip ticker suffix
+  // ── 1. Extract ticker before stripping it (source of truth for bet type) ──
+  let ticker = '';
+  const tickerMatch = raw.match(/\|\s*(KX\S+)$/);
+  if (tickerMatch) ticker = tickerMatch[1].toUpperCase();
+
+  // Strip ticker suffix for display
   let s = raw.replace(/\s*\|\s*KX\S+$/, '').trim();
 
-  // Extract side [YES]/[NO]
+  // ── 2. Extract side [YES]/[NO] ──
   let side = '';
   const sideMatch = s.match(/^\[(YES|NO)\]\s*/i);
   if (sideMatch) {
@@ -206,33 +211,83 @@ function formatLeg(raw) {
     s = s.slice(sideMatch[0].length);
   }
 
-  // Extract bet type prefix (e.g. "Moneyline:", "Player Strikeouts:", "Run Line:", "Total Runs:")
+  // ── 3. Determine bet type from ticker (most reliable) ──
   let betType = '';
-  const typePatterns = [
-    /^(Player Strikeouts):\s*/i, /^(Player Hits \+ Runs \+ RBIs):\s*/i,
-    /^(Player Home Runs):\s*/i, /^(Player Hits):\s*/i, /^(Player Bases):\s*/i,
-    /^(1st Inning Total Runs):\s*/i, /^(Total Runs):\s*/i, /^(Run Line):\s*/i,
-    /^(Point Spread):\s*/i, /^(Moneyline):\s*/i, /^(ML):\s*/i,
-    /^(BTTS)\s*/i,
-  ];
-  for (const pat of typePatterns) {
-    const m = s.match(pat);
-    if (m) {
-      betType = m[1];
-      s = s.slice(m[0].length);
-      break;
+  if (ticker) {
+    // MLB — check HRR before HR
+    if (ticker.includes('KXMLB') || ticker.includes('KXMVEMLB')) {
+      if (/-HRR-/.test(ticker) || ticker.startsWith('KXMLBHRR'))      betType = 'H+R+RBI';
+      else if (/-HR-/.test(ticker) || ticker.startsWith('KXMLBHR'))    betType = 'HR';
+      else if (/-KS-/.test(ticker) || ticker.startsWith('KXMLBKS'))    betType = 'K';
+      else if (/-HIT-/.test(ticker) || ticker.startsWith('KXMLBHIT'))  betType = 'Hits';
+      else if (/-TB-/.test(ticker) || ticker.startsWith('KXMLBTB'))    betType = 'TB';
+      else if (/-RFI-/.test(ticker) || ticker.startsWith('KXMLBRFI'))  betType = '1st Inn';
+      else if (ticker.includes('SPREAD')) betType = 'Spread';
+      else if (ticker.includes('TOTAL'))  betType = 'Total';
+      else if (ticker.includes('GAME'))   betType = 'ML';
     }
-  }
-  // Also handle NBA format like "LaMelo Ball over 14.5 PTS"
-  if (!betType) {
-    const nbaMatch = s.match(/^(.+?)\s+over\s+([\d.]+)\s+(PTS|REB|AST|3PM|BLK|STL)\b/i);
-    if (nbaMatch) {
-      betType = nbaMatch[3].toUpperCase();
-      // Keep description as-is, just identified the type
+    // NBA
+    else if (ticker.includes('KXNBA') || ticker.includes('KXMVENBA')) {
+      if (ticker.includes('PTS'))      betType = 'PTS';
+      else if (ticker.includes('AST')) betType = 'AST';
+      else if (ticker.includes('REB')) betType = 'REB';
+      else if (ticker.includes('3PM')) betType = '3PM';
+      else if (ticker.includes('BLK')) betType = 'BLK';
+      else if (ticker.includes('STL')) betType = 'STL';
+      else if (ticker.includes('SPREAD')) betType = 'Spread';
+      else if (ticker.includes('TOTAL'))  betType = 'Total';
+      else if (ticker.includes('GAME'))   betType = 'ML';
+    }
+    // NHL
+    else if (ticker.includes('KXNHL') || ticker.includes('KXMVENHL')) {
+      if (ticker.includes('SPREAD'))      betType = 'Spread';
+      else if (ticker.includes('TOTAL'))  betType = 'Total';
+      else if (ticker.includes('GAME'))   betType = 'ML';
+    }
+    // NCAAB
+    else if (ticker.includes('KXNCAA') || ticker.includes('KXMVENCAA')) {
+      if (ticker.includes('SPREAD'))      betType = 'Spread';
+      else if (ticker.includes('TOTAL'))  betType = 'Total';
+      else if (ticker.includes('GAME'))   betType = 'ML';
+    }
+    // Soccer
+    else if (/KX(EPL|UCL|LALIGA|SERIEA|BUNDESLIGA|LIGUE1|SOCCER)/.test(ticker)) {
+      if (ticker.includes('BTTS'))        betType = 'BTTS';
+      else if (ticker.includes('SPREAD')) betType = 'Spread';
+      else if (ticker.includes('TOTAL'))  betType = 'Total';
+      else if (ticker.includes('GAME'))   betType = 'ML';
     }
   }
 
-  // Extract game context (Team@Team) or [League] tag
+  // ── 4. Fallback: parse bet type from description text ──
+  if (!betType) {
+    const descPatterns = [
+      [/^(Player Strikeouts):\s*/i, 'K'], [/^(Player Hits \+ Runs \+ RBIs):\s*/i, 'H+R+RBI'],
+      [/^(Player Home Runs):\s*/i, 'HR'], [/^(Player Hits):\s*/i, 'Hits'],
+      [/^(Player Bases):\s*/i, 'TB'], [/^(1st Inning Total Runs):\s*/i, '1st Inn'],
+      [/^(Total Runs):\s*/i, 'Total'], [/^(Run Line):\s*/i, 'Spread'],
+      [/^(Point Spread):\s*/i, 'Spread'], [/^(Moneyline):\s*/i, 'ML'], [/^(ML):\s*/i, 'ML'],
+      [/^(BTTS)\s*/i, 'BTTS'],
+    ];
+    for (const [pat, label] of descPatterns) {
+      const m = s.match(pat);
+      if (m) { betType = label; s = s.slice(m[0].length); break; }
+    }
+  } else {
+    // Still strip the description prefix if present (since we got type from ticker)
+    const prefixes = [
+      /^Player Strikeouts:\s*/i, /^Player Hits \+ Runs \+ RBIs:\s*/i,
+      /^Player Home Runs:\s*/i, /^Player Hits:\s*/i, /^Player Bases:\s*/i,
+      /^1st Inning Total Runs:\s*/i, /^Total Runs:\s*/i, /^Run Line:\s*/i,
+      /^Point Spread:\s*/i, /^Moneyline:\s*/i, /^ML:\s*/i, /^BTTS\s*/i,
+    ];
+    for (const pat of prefixes) {
+      const m = s.match(pat);
+      if (m) { s = s.slice(m[0].length); break; }
+    }
+  }
+
+  // ── 5. Extract game context ──
   let game = '';
   const gameMatch = s.match(/\s*\(([^)]+)\)\s*$/);
   if (gameMatch) {
@@ -240,19 +295,9 @@ function formatLeg(raw) {
     s = s.slice(0, -gameMatch[0].length).trim();
   }
 
-  // Short label for bet type
-  const typeLabels = {
-    'moneyline': 'ML', 'ml': 'ML', 'point spread': 'Spread', 'run line': 'Spread',
-    'player strikeouts': 'K', 'player hits': 'Hits', 'player home runs': 'HR',
-    'player hits + runs + rbis': 'H+R+RBI', 'player bases': 'TB',
-    'total runs': 'Total', '1st inning total runs': '1st Inn',
-    'btts': 'BTTS', 'pts': 'PTS', 'reb': 'REB', 'ast': 'AST',
-    '3pm': '3PM', 'blk': 'BLK', 'stl': 'STL',
-  };
-  const typeLabel = typeLabels[betType.toLowerCase()] || betType;
-
+  // ── 6. Build HTML ──
   const sideHTML = side ? `<span class="leg-side ${side.toLowerCase()}">${side}</span>` : '';
-  const typeHTML = typeLabel ? `<span class="leg-type">${typeLabel}</span>` : '';
+  const typeHTML = betType ? `<span class="leg-type">${betType}</span>` : '';
   const gameHTML = game ? ` <span class="leg-game">(${game})</span>` : '';
 
   return `<div class="leg-row">${sideHTML}${typeHTML}<span class="leg-desc">${s}${gameHTML}</span></div>`;
