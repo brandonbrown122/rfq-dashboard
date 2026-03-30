@@ -166,18 +166,39 @@ function renderTable(rows, labelHeader, usePill) {
   return html;
 }
 
-function renderPropsTable(props) {
+function renderPropsTable(props, sportKey) {
   if (!props || props.length === 0) return '<span class="muted">No player props</span>';
-  let html = '<table><tr><th>Player Prop</th><th>Record</th><th>Win%</th></tr>';
+
+  // Get unique prop types for filter
+  const propTypes = [...new Set(props.map(p => p.prop_type))].sort();
+  const filterId = 'prop-filter-' + sportKey;
+
+  let html = `<div style="margin-bottom:8px;font-size:0.8em">
+    <label style="color:var(--muted)">Filter: </label>
+    <select id="${filterId}" onchange="filterProps('${sportKey}')" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:3px 6px;border-radius:4px;font-size:0.9em">
+      <option value="">All</option>
+      ${propTypes.map(t => `<option value="${t}">${t}</option>`).join('')}
+    </select>
+  </div>`;
+  html += `<table id="props-table-${sportKey}"><tr><th>Player Prop</th><th>Type</th><th>Record</th><th>Win%</th></tr>`;
   for (const p of props) {
-    html += `<tr>
-      <td style="max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${p.prop}">${p.prop}</td>
+    html += `<tr data-prop-type="${p.prop_type}">
+      <td style="max-width:350px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${p.prop}">${p.prop}</td>
+      <td style="font-size:0.8em;color:var(--muted)">${p.prop_type}</td>
       <td>${p.wins}W / ${p.losses}L</td>
       <td class="${pnlClass(p.win_pct - 50)}">${fmtPct(p.win_pct)}</td>
     </tr>`;
   }
   html += '</table>';
   return html;
+}
+
+function filterProps(sportKey) {
+  const filter = document.getElementById('prop-filter-' + sportKey).value;
+  const rows = document.querySelectorAll('#props-table-' + sportKey + ' tr[data-prop-type]');
+  for (const row of rows) {
+    row.style.display = (!filter || row.dataset.propType === filter) ? '' : 'none';
+  }
 }
 
 function toggleSport(id) {
@@ -263,7 +284,7 @@ async function loadPerformance() {
           </div>
           ${detail.player_props ? `<div class="sub-card">
             <h3>Player Props Detail</h3>
-            ${renderPropsTable(detail.player_props)}
+            ${renderPropsTable(detail.player_props, sportKey)}
           </div>` : ''}
         </div>
       </div>`;

@@ -318,6 +318,12 @@ def api_performance():
     import re as _re
     from data_engine import _classify_leg_bet_type
 
+    PROP_TYPES = {
+        "points", "rebounds", "assists", "threes", "blocks", "steals",
+        "strikeouts", "hits", "home_runs", "hits+runs+rbis", "total_bases",
+        "player_prop",
+    }
+
     cache = load_cache()
     positions = cache.get("positions", [])
 
@@ -428,23 +434,27 @@ def api_performance():
             "by_price": _group_by_price(sport_positions),
         }
         # Player prop detail for this sport
-        prop_map = defaultdict(list)
+        prop_map = defaultdict(lambda: {"positions": [], "prop_type": ""})
         for p in sport_positions:
             for leg in p.get("legs", []):
-                if _classify_leg_bet_type(leg) == "player_prop":
+                bt = _classify_leg_bet_type(leg)
+                if bt in PROP_TYPES:
                     # Strip ticker suffix, keep the prop description
                     prop_name = _re.sub(r'\s*\|\s*KX\S+$', '', leg).strip()
                     # Remove [YES]/[NO] prefix
                     prop_name = _re.sub(r'^\[(YES|NO)\]\s*', '', prop_name).strip()
-                    prop_map[prop_name].append(p)
+                    prop_map[prop_name]["positions"].append(p)
+                    prop_map[prop_name]["prop_type"] = bt
         if prop_map:
             props = []
-            for prop_name, prop_positions in prop_map.items():
+            for prop_name, prop_data in prop_map.items():
+                prop_positions = prop_data["positions"]
                 wins = sum(1 for p in prop_positions if p.get("outcome") == "win")
                 losses = sum(1 for p in prop_positions if p.get("outcome") == "loss")
                 total = wins + losses
                 props.append({
                     "prop": prop_name,
+                    "prop_type": prop_data["prop_type"],
                     "wins": wins,
                     "losses": losses,
                     "total": total,

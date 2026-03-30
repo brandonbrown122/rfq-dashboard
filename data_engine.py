@@ -152,47 +152,134 @@ def _classify_leg_sport(leg_str):
 
 
 def _classify_leg_bet_type(leg_str):
-    """Classify a leg's bet type from its description."""
+    """Classify a leg's bet type from its ticker and description.
+
+    Uses ticker suffixes for precise classification (especially player props),
+    falling back to description-based heuristics.
+    """
     upper = leg_str.upper()
 
-    # Check market ticker suffix for bet type (e.g. | KXNBAGAME-...-SPREAD, -TOTAL)
+    # Extract ticker from leg string (format: "description | KXTICKER-...")
     ticker_part = ""
     if "| " in leg_str:
         ticker_part = leg_str.split("| ")[-1].upper()
 
-    # Spread detection
-    if "SPREAD" in upper or "WINS BY" in upper.replace("OVER ", ""):
+    # ── Ticker-based classification (most reliable) ──
+
+    if ticker_part:
+        # MLB props — check HRR before HR to avoid false match
+        if "KXMLB" in ticker_part or "KXMVEMLB" in ticker_part:
+            if "-HRR-" in ticker_part or ticker_part.startswith("KXMLBHRR"):
+                return "hits+runs+rbis"
+            if "-HR-" in ticker_part or ticker_part.startswith("KXMLBHR"):
+                return "home_runs"
+            if "-KS-" in ticker_part or ticker_part.startswith("KXMLBKS"):
+                return "strikeouts"
+            if "-HIT-" in ticker_part or ticker_part.startswith("KXMLBHIT"):
+                return "hits"
+            if "-TB-" in ticker_part or ticker_part.startswith("KXMLBTB"):
+                return "total_bases"
+            if "-RFI-" in ticker_part or ticker_part.startswith("KXMLBRFI"):
+                return "first_inning_run"
+            if "SPREAD" in ticker_part:
+                return "spread"
+            if "TOTAL" in ticker_part:
+                return "total"
+            if "GAME" in ticker_part:
+                return "moneyline"
+
+        # NBA props
+        if "KXNBA" in ticker_part or "KXMVENBA" in ticker_part:
+            if "PTS-" in ticker_part or ticker_part.startswith("KXNBAPTS"):
+                return "points"
+            if "AST-" in ticker_part or ticker_part.startswith("KXNBAAST"):
+                return "assists"
+            if "REB-" in ticker_part or ticker_part.startswith("KXNBAREB"):
+                return "rebounds"
+            if "3PM-" in ticker_part or ticker_part.startswith("KXNBA3PM"):
+                return "threes"
+            if "BLK-" in ticker_part or ticker_part.startswith("KXNBABLK"):
+                return "blocks"
+            if "STL-" in ticker_part or ticker_part.startswith("KXNBASTL"):
+                return "steals"
+            if "SPREAD" in ticker_part:
+                return "spread"
+            if "TOTAL" in ticker_part:
+                return "total"
+            if "GAME" in ticker_part:
+                return "moneyline"
+
+        # NHL props
+        if "KXNHL" in ticker_part or "KXMVENHL" in ticker_part:
+            if "SPREAD" in ticker_part:
+                return "spread"
+            if "TOTAL" in ticker_part:
+                return "total"
+            if "GAME" in ticker_part:
+                return "moneyline"
+
+        # NCAAB
+        if "KXNCAAMB" in ticker_part or "KXNCAAB" in ticker_part or "KXMVENCAAMB" in ticker_part:
+            if "SPREAD" in ticker_part:
+                return "spread"
+            if "TOTAL" in ticker_part:
+                return "total"
+            if "GAME" in ticker_part:
+                return "moneyline"
+
+    # ── Description-based fallback ──
+
+    # Spread
+    if "SPREAD" in upper or "POINT SPREAD" in upper or "WINS BY" in upper.replace("OVER ", ""):
         return "spread"
     if "-SP" in ticker_part:
         return "spread"
 
-    # Total / over-under detection
+    # Total
     if "POINTS SCORED" in upper or "TOTAL-" in ticker_part:
         return "total"
     if ("OVER " in upper or "UNDER " in upper) and ("GOALS" in upper or "POINTS" in upper):
         return "total"
 
-    # BTTS (both teams to score)
+    # BTTS
     if "BTTS" in upper or "BOTH TEAMS" in upper:
         return "btts"
 
-    # Player props
-    if any(k in upper for k in ("PTS", "REB", "AST", "3PM", "BLK", "STL")):
-        return "player_prop"
-    # Pattern like "Player Name: N+" (e.g. "Donovan Mitchell: 2+")
+    # Generic player prop fallback (description keywords)
+    if any(k in upper for k in ("STRIKEOUT", "STRIKEOUTS")):
+        return "strikeouts"
+    if "HOME RUN" in upper:
+        return "home_runs"
+    if "HITS + RUNS + RBIS" in upper or "HITS+RUNS+RBIS" in upper:
+        return "hits+runs+rbis"
+    if " HIT" in upper and "TOTAL BASE" not in upper:
+        return "hits"
+    if "TOTAL BASE" in upper:
+        return "total_bases"
+    if re.search(r'\b\d+\+?\s*(PTS|POINTS)\b', upper):
+        return "points"
+    if re.search(r'\b\d+\+?\s*(REB|REBOUNDS)\b', upper):
+        return "rebounds"
+    if re.search(r'\b\d+\+?\s*(AST|ASSISTS)\b', upper):
+        return "assists"
+    if re.search(r'\b\d+\+?\s*(3PM|THREE)\b', upper):
+        return "threes"
+    if re.search(r'\b\d+\+?\s*(BLK|BLOCKS)\b', upper):
+        return "blocks"
+    if re.search(r'\b\d+\+?\s*(STL|STEALS)\b', upper):
+        return "steals"
+    # Pattern like "Player Name: N+"
     if re.search(r':\s*\d+\+', leg_str):
         return "player_prop"
 
-    # Moneyline: team name only (no spread/total/prop keywords)
-    # If it has a GAME ticker and no other bet type, it's moneyline
+    # Moneyline
     if "GAME-" in ticker_part or "GAME-" in upper:
         return "moneyline"
-
-    # Short legs that are just "yes TeamName" or "no TeamName" are moneylines
     clean = upper
+    if clean.startswith("[YES] ") or clean.startswith("[NO] "):
+        clean = clean.split("] ", 1)[1] if "] " in clean else clean
     if clean.startswith("YES ") or clean.startswith("NO "):
         clean = clean[4:] if clean.startswith("YES ") else clean[3:]
-    # If it's just a team name (short, no numbers, no keywords), it's moneyline
     if len(clean.split()) <= 3 and not any(c.isdigit() for c in clean):
         return "moneyline"
 
