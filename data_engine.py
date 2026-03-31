@@ -445,14 +445,13 @@ def compute_leg_exposure(positions):
     for pos in positions:
         pos_legs = pos.get("legs", [])
         pos_leg_sports = pos.get("leg_sports", [])
-        n_legs = max(len(pos_legs), 1)
-        per_leg_collateral = pos.get("collateral", 0) / n_legs
-        per_leg_size = pos.get("size", 0) / n_legs
+        pos_collateral = pos.get("collateral", 0)
+        pos_size = pos.get("size", 0)
 
         for i, leg_str in enumerate(pos_legs):
             leg_key = re.sub(r'\s*\|\s*KX\S+$', '', leg_str).strip()
-            legs[leg_key]["collateral"] += per_leg_collateral
-            legs[leg_key]["size"] += per_leg_size
+            legs[leg_key]["collateral"] += pos_collateral
+            legs[leg_key]["size"] += pos_size
             legs[leg_key]["count"] += 1
             # Use pre-computed leg sport from refresh if available
             if i < len(pos_leg_sports) and pos_leg_sports[i] != "other":

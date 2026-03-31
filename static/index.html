@@ -402,12 +402,13 @@ async function loadLegExposure() {
   if (!d || d.legs.length === 0) { el.innerHTML = '<span class="muted">No data</span>'; return; }
 
   const maxCol = Math.max(...d.legs.map(l => l.collateral));
-  let html = '<table><tr><th>Leg</th><th>Sport</th><th>Type</th><th>Collateral</th><th>Parlays</th><th></th></tr>';
+  let html = '<table><tr><th>Leg</th><th>Sport</th><th>Type</th><th>Size</th><th>Collateral</th><th>Parlays</th><th></th></tr>';
   for (const l of d.legs) {
     html += `<tr>
       <td style="max-width:350px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${l.leg}">${l.leg}</td>
       <td>${sportPill(l.sport)}</td>
       <td>${l.bet_type}</td>
+      <td>${fmt$(l.size)}</td>
       <td>${fmt$(l.collateral)}</td>
       <td>${l.count}</td>
       <td style="width:20%">${barHTML(l.collateral, maxCol)}</td>
