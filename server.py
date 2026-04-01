@@ -283,7 +283,12 @@ def api_leg_exposure():
 
     bet_type = request.args.get("bet_type")
     if bet_type:
-        legs = [l for l in legs if l["bet_type"] == bet_type.lower()]
+        bt = bet_type.lower()
+        if bt == "player_prop":
+            non_prop_types = {"moneyline", "spread", "total", "btts"}
+            legs = [l for l in legs if l["bet_type"] not in non_prop_types]
+        else:
+            legs = [l for l in legs if l["bet_type"] == bt]
 
     limit = request.args.get("limit", 50, type=int)
     legs = legs[:limit]
