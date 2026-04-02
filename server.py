@@ -211,6 +211,15 @@ def api_positions():
     return jsonify({"count": len(positions), "positions": positions})
 
 
+@app.route("/api/recent_fills")
+def api_recent_fills():
+    """Return the N most recent fills (default 5). Much lighter than /api/positions."""
+    n = request.args.get("n", 5, type=int)
+    positions = get_all_positions()
+    recent = sorted(positions, key=lambda p: p.get("timestamp", ""), reverse=True)[:n]
+    return jsonify({"count": len(recent), "positions": recent})
+
+
 @app.route("/api/open")
 def api_open():
     """Open positions with optional filters.

@@ -347,14 +347,11 @@ function renderExposureTable(containerId, groups, labelHeader) {
 }
 
 async function loadRecentFills() {
-  const d = await fetchJSON('/api/positions');
+  const d = await fetchJSON('/api/recent_fills?n=5');
   const el = document.getElementById('recent-fills');
   if (!d || !d.positions || d.positions.length === 0) { el.innerHTML = '<span class="muted">No fills yet</span>'; return; }
 
-  // Sort by timestamp descending, take last 5
-  const recent = d.positions
-    .sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''))
-    .slice(0, 5);
+  const recent = d.positions;
 
   let html = '<table><tr><th>Time</th><th>Sports</th><th>Legs</th><th>Collateral</th><th>Price</th><th>Status</th><th>Details</th></tr>';
   for (const p of recent) {
